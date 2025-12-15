@@ -22,8 +22,9 @@ class ImportTreeItem extends vscode.TreeItem {
     filePath: string = '';
     relativePath: string = '';
     absolutePath: string = '';
-    importType?: ImportType;
-    isChecked: boolean = false;
+    fileExtension: string = '';
+    selectedImportType: ImportType | null = null; // null = not selected
+    availableImportTypes: ImportType[] = [];
 
     constructor(
         public readonly label: string,
@@ -33,8 +34,9 @@ class ImportTreeItem extends vscode.TreeItem {
             filePath?: string;
             relativePath?: string;
             absolutePath?: string;
-            importType?: ImportType;
-            isChecked?: boolean;
+            fileExtension?: string;
+            selectedImportType?: ImportType | null;
+            availableImportTypes?: ImportType[];
         }
     ) {
         super(label, collapsibleState);
@@ -43,26 +45,41 @@ class ImportTreeItem extends vscode.TreeItem {
             this.filePath = options.filePath || '';
             this.relativePath = options.relativePath || '';
             this.absolutePath = options.absolutePath || '';
-            this.importType = options.importType;
-            this.isChecked = options.isChecked || false;
+            this.fileExtension = options.fileExtension || '';
+            this.selectedImportType = options.selectedImportType ?? null;
+            this.availableImportTypes = options.availableImportTypes || [];
         }
 
-        // Set icon and checkbox state
+        this.updateAppearance();
+    }
+
+    updateAppearance() {
         if (this.isFile) {
-            this.checkboxState = this.isChecked
+            // Show checkbox based on whether an import type is selected
+            this.checkboxState = this.selectedImportType
                 ? vscode.TreeItemCheckboxState.Checked
                 : vscode.TreeItemCheckboxState.Unchecked;
 
-            // Set icon based on import type
-            if (this.importType === 'Library') {
-                this.iconPath = new vscode.ThemeIcon('library');
-            } else if (this.importType === 'Resource') {
+            // Set icon based on file type
+            if (this.fileExtension === '.py') {
                 this.iconPath = new vscode.ThemeIcon('file-code');
-            } else if (this.importType === 'Variables') {
-                this.iconPath = new vscode.ThemeIcon('symbol-variable');
+            } else {
+                this.iconPath = new vscode.ThemeIcon('file');
             }
 
-            this.description = `[${this.importType}]`;
+            // Show selected import type or available options
+            if (this.selectedImportType) {
+                this.description = `→ ${this.selectedImportType}`;
+            } else {
+                this.description = `(${this.availableImportTypes.join(' | ')})`;
+            }
+
+            // Make clickable to change import type
+            this.command = {
+                command: 'rfFilesCreator.selectImportType',
+                title: 'Select Import Type',
+                arguments: [this]
+            };
         } else {
             this.iconPath = new vscode.ThemeIcon('folder');
         }
@@ -82,7 +99,6 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
         private resourceFiles: vscode.Uri[],
         private targetDir: string,
         private workspaceRoot: string,
-        private pathType: PathType,
         private existingImports: ExistingImport[] = []
     ) {
         this.buildTree();
@@ -96,24 +112,26 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
         const getRelativePath = (filePath: string) => path.relative(this.targetDir, filePath).replace(/\\/g, '/');
         const getAbsolutePath = (filePath: string) => path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
 
-        // Check if import is already selected
-        const isImportSelected = (importPath: string, importType: ImportType): boolean => {
-            return this.existingImports.some(imp => {
+        // Find existing import type for a file
+        const findExistingImportType = (importPath: string): ImportType | null => {
+            for (const imp of this.existingImports) {
                 const normalizedExisting = imp.path.replace(/\\/g, '/');
                 const normalizedNew = importPath.replace(/\\/g, '/');
-                return imp.type === importType && (
-                    normalizedExisting === normalizedNew ||
+                if (normalizedExisting === normalizedNew ||
                     normalizedExisting.endsWith(normalizedNew) ||
-                    normalizedNew.endsWith(normalizedExisting)
-                );
-            });
+                    normalizedNew.endsWith(normalizedExisting)) {
+                    return imp.type;
+                }
+            }
+            return null;
         };
 
         // Build tree for a set of files
         const buildSection = (
             files: vscode.Uri[],
-            importTypes: ImportType[],
-            sectionLabel: string
+            availableImportTypes: ImportType[],
+            sectionLabel: string,
+            fileExtension: string
         ): ImportTreeItem | null => {
             if (files.length === 0) return null;
 
@@ -149,34 +167,33 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
                     currentParent = folderMap.get(currentPath)!;
                 }
 
-                // Add file items for each import type
-                for (const importType of importTypes) {
-                    const isChecked = isImportSelected(relativePath, importType) ||
-                                     isImportSelected(absPath, importType);
+                // Find if this file has an existing import
+                const existingType = findExistingImportType(relativePath) || findExistingImportType(absPath);
 
-                    const fileItem = new ImportTreeItem(
-                        `${fileName} [${importType}]`,
-                        vscode.TreeItemCollapsibleState.None,
-                        {
-                            isFile: true,
-                            filePath: file.fsPath,
-                            relativePath,
-                            absolutePath: absPath,
-                            importType,
-                            isChecked
-                        }
-                    );
-                    currentParent.children.push(fileItem);
-                    this.allFileItems.push(fileItem);
-                }
+                // Add single file item with selectable import type
+                const fileItem = new ImportTreeItem(
+                    fileName,
+                    vscode.TreeItemCollapsibleState.None,
+                    {
+                        isFile: true,
+                        filePath: file.fsPath,
+                        relativePath,
+                        absolutePath: absPath,
+                        fileExtension,
+                        selectedImportType: existingType,
+                        availableImportTypes
+                    }
+                );
+                currentParent.children.push(fileItem);
+                this.allFileItems.push(fileItem);
             }
 
             return sectionItem;
         };
 
-        // Build sections
-        const pySection = buildSection(this.pyFiles, ['Library', 'Variables'], 'Python Files (.py)');
-        const resourceSection = buildSection(this.resourceFiles, ['Resource', 'Variables'], 'Resource Files (.resource)');
+        // Build sections - each file appears once with import type options
+        const pySection = buildSection(this.pyFiles, ['Library', 'Variables'], 'Python Files (.py)', '.py');
+        const resourceSection = buildSection(this.resourceFiles, ['Resource', 'Variables'], 'Resource Files (.resource)', '.resource');
 
         if (pySection) this.rootItems.push(pySection);
         if (resourceSection) this.rootItems.push(resourceSection);
@@ -194,22 +211,33 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
     }
 
     getParent(_element: ImportTreeItem): vscode.ProviderResult<ImportTreeItem> {
-        return null; // Not needed for this implementation
+        return null;
     }
 
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
+    refresh(item?: ImportTreeItem): void {
+        this._onDidChangeTreeData.fire(item);
     }
 
     getSelectedItems(): ImportTreeItem[] {
-        return this.allFileItems.filter(item => item.isChecked);
+        return this.allFileItems.filter(item => item.selectedImportType !== null);
     }
 
-    updateCheckState(item: ImportTreeItem, checked: boolean): void {
-        item.isChecked = checked;
-        item.checkboxState = checked
-            ? vscode.TreeItemCheckboxState.Checked
-            : vscode.TreeItemCheckboxState.Unchecked;
+    setImportType(item: ImportTreeItem, importType: ImportType | null): void {
+        item.selectedImportType = importType;
+        item.updateAppearance();
+        this.refresh(item);
+    }
+
+    toggleSelection(item: ImportTreeItem, checked: boolean): void {
+        if (checked && !item.selectedImportType) {
+            // When checking, default to first available import type
+            item.selectedImportType = item.availableImportTypes[0] || null;
+        } else if (!checked) {
+            // When unchecking, clear the import type
+            item.selectedImportType = null;
+        }
+        item.updateAppearance();
+        this.refresh(item);
     }
 }
 
@@ -274,6 +302,41 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    // Register command: Select Import Type (when clicking on a file)
+    const selectImportType = vscode.commands.registerCommand(
+        'rfFilesCreator.selectImportType',
+        async (item: ImportTreeItem) => {
+            if (!item.isFile || !currentTreeProvider) return;
+
+            // Show quick pick with available import types + option to deselect
+            const options: vscode.QuickPickItem[] = item.availableImportTypes.map(type => ({
+                label: type,
+                description: item.selectedImportType === type ? '(current)' : ''
+            }));
+
+            // Add option to remove/deselect
+            if (item.selectedImportType) {
+                options.push({
+                    label: '$(close) Remove Import',
+                    description: 'Deselect this file'
+                });
+            }
+
+            const selected = await vscode.window.showQuickPick(options, {
+                title: `Select import type for ${item.label}`,
+                placeHolder: 'Choose how to import this file'
+            });
+
+            if (selected) {
+                if (selected.label === '$(close) Remove Import') {
+                    currentTreeProvider.setImportType(item, null);
+                } else {
+                    currentTreeProvider.setImportType(item, selected.label as ImportType);
+                }
+            }
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
@@ -281,7 +344,8 @@ export function activate(context: vscode.ExtensionContext) {
         createLocatorsFile,
         editImports,
         confirmImports,
-        cancelImports
+        cancelImports,
+        selectImportType
     );
 }
 
@@ -492,6 +556,9 @@ let currentTreeView: vscode.TreeView<ImportTreeItem> | undefined;
 let currentTreeProvider: ImportTreeDataProvider | undefined;
 let importSelectionResolver: ((confirmed: boolean) => void) | undefined;
 
+// Store pathType globally for generating settings
+let currentPathType: PathType = 'relative';
+
 /**
  * Show file selection using TreeView in sidebar
  */
@@ -503,6 +570,8 @@ async function showFileSelectionTreeView(
     pathType: PathType,
     existingImports: ExistingImport[] = []
 ): Promise<SelectedItem[]> {
+    currentPathType = pathType;
+
     return new Promise((resolve) => {
         // Create tree data provider
         currentTreeProvider = new ImportTreeDataProvider(
@@ -510,7 +579,6 @@ async function showFileSelectionTreeView(
             resourceFiles,
             targetDir,
             workspaceRoot,
-            pathType,
             existingImports
         );
 
@@ -524,11 +592,11 @@ async function showFileSelectionTreeView(
             manageCheckboxStateManually: true
         });
 
-        // Handle checkbox changes
+        // Handle checkbox changes (toggle selection)
         currentTreeView.onDidChangeCheckboxState(e => {
             for (const [item, state] of e.items) {
                 if (item.isFile) {
-                    currentTreeProvider?.updateCheckState(
+                    currentTreeProvider?.toggleSelection(
                         item,
                         state === vscode.TreeItemCheckboxState.Checked
                     );
@@ -551,7 +619,7 @@ async function showFileSelectionTreeView(
                 filePath: item.filePath,
                 relativePath: item.relativePath,
                 absolutePath: item.absolutePath,
-                importType: item.importType
+                importType: item.selectedImportType || undefined
             }));
 
             // Hide the tree view
