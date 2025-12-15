@@ -15,6 +15,204 @@ interface ExistingImport {
     path: string;
 }
 
+// Tree item for import selection
+class ImportTreeItem extends vscode.TreeItem {
+    children: ImportTreeItem[] = [];
+    isFile: boolean = false;
+    filePath: string = '';
+    relativePath: string = '';
+    absolutePath: string = '';
+    importType?: ImportType;
+    isChecked: boolean = false;
+
+    constructor(
+        public readonly label: string,
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        options?: {
+            isFile?: boolean;
+            filePath?: string;
+            relativePath?: string;
+            absolutePath?: string;
+            importType?: ImportType;
+            isChecked?: boolean;
+        }
+    ) {
+        super(label, collapsibleState);
+        if (options) {
+            this.isFile = options.isFile || false;
+            this.filePath = options.filePath || '';
+            this.relativePath = options.relativePath || '';
+            this.absolutePath = options.absolutePath || '';
+            this.importType = options.importType;
+            this.isChecked = options.isChecked || false;
+        }
+
+        // Set icon and checkbox state
+        if (this.isFile) {
+            this.checkboxState = this.isChecked
+                ? vscode.TreeItemCheckboxState.Checked
+                : vscode.TreeItemCheckboxState.Unchecked;
+
+            // Set icon based on import type
+            if (this.importType === 'Library') {
+                this.iconPath = new vscode.ThemeIcon('library');
+            } else if (this.importType === 'Resource') {
+                this.iconPath = new vscode.ThemeIcon('file-code');
+            } else if (this.importType === 'Variables') {
+                this.iconPath = new vscode.ThemeIcon('symbol-variable');
+            }
+
+            this.description = `[${this.importType}]`;
+        } else {
+            this.iconPath = new vscode.ThemeIcon('folder');
+        }
+    }
+}
+
+// Tree data provider for import selection
+class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> {
+    private _onDidChangeTreeData = new vscode.EventEmitter<ImportTreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+    private rootItems: ImportTreeItem[] = [];
+    private allFileItems: ImportTreeItem[] = [];
+
+    constructor(
+        private pyFiles: vscode.Uri[],
+        private resourceFiles: vscode.Uri[],
+        private targetDir: string,
+        private workspaceRoot: string,
+        private pathType: PathType,
+        private existingImports: ExistingImport[] = []
+    ) {
+        this.buildTree();
+    }
+
+    private buildTree() {
+        this.rootItems = [];
+        this.allFileItems = [];
+
+        // Helper to get paths
+        const getRelativePath = (filePath: string) => path.relative(this.targetDir, filePath).replace(/\\/g, '/');
+        const getAbsolutePath = (filePath: string) => path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
+
+        // Check if import is already selected
+        const isImportSelected = (importPath: string, importType: ImportType): boolean => {
+            return this.existingImports.some(imp => {
+                const normalizedExisting = imp.path.replace(/\\/g, '/');
+                const normalizedNew = importPath.replace(/\\/g, '/');
+                return imp.type === importType && (
+                    normalizedExisting === normalizedNew ||
+                    normalizedExisting.endsWith(normalizedNew) ||
+                    normalizedNew.endsWith(normalizedExisting)
+                );
+            });
+        };
+
+        // Build tree for a set of files
+        const buildSection = (
+            files: vscode.Uri[],
+            importTypes: ImportType[],
+            sectionLabel: string
+        ): ImportTreeItem | null => {
+            if (files.length === 0) return null;
+
+            // Create folder structure
+            const folderMap = new Map<string, ImportTreeItem>();
+            const sectionItem = new ImportTreeItem(
+                sectionLabel,
+                vscode.TreeItemCollapsibleState.Expanded
+            );
+            sectionItem.iconPath = new vscode.ThemeIcon('folder-library');
+
+            for (const file of files) {
+                const absPath = getAbsolutePath(file.fsPath);
+                const relativePath = getRelativePath(file.fsPath);
+                const parts = absPath.split('/');
+                const fileName = parts.pop()!;
+
+                // Build folder hierarchy
+                let currentParent = sectionItem;
+                let currentPath = '';
+
+                for (const folderName of parts) {
+                    currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+
+                    if (!folderMap.has(currentPath)) {
+                        const folderItem = new ImportTreeItem(
+                            folderName,
+                            vscode.TreeItemCollapsibleState.Expanded
+                        );
+                        folderMap.set(currentPath, folderItem);
+                        currentParent.children.push(folderItem);
+                    }
+                    currentParent = folderMap.get(currentPath)!;
+                }
+
+                // Add file items for each import type
+                for (const importType of importTypes) {
+                    const isChecked = isImportSelected(relativePath, importType) ||
+                                     isImportSelected(absPath, importType);
+
+                    const fileItem = new ImportTreeItem(
+                        `${fileName} [${importType}]`,
+                        vscode.TreeItemCollapsibleState.None,
+                        {
+                            isFile: true,
+                            filePath: file.fsPath,
+                            relativePath,
+                            absolutePath: absPath,
+                            importType,
+                            isChecked
+                        }
+                    );
+                    currentParent.children.push(fileItem);
+                    this.allFileItems.push(fileItem);
+                }
+            }
+
+            return sectionItem;
+        };
+
+        // Build sections
+        const pySection = buildSection(this.pyFiles, ['Library', 'Variables'], 'Python Files (.py)');
+        const resourceSection = buildSection(this.resourceFiles, ['Resource', 'Variables'], 'Resource Files (.resource)');
+
+        if (pySection) this.rootItems.push(pySection);
+        if (resourceSection) this.rootItems.push(resourceSection);
+    }
+
+    getTreeItem(element: ImportTreeItem): vscode.TreeItem {
+        return element;
+    }
+
+    getChildren(element?: ImportTreeItem): ImportTreeItem[] {
+        if (!element) {
+            return this.rootItems;
+        }
+        return element.children;
+    }
+
+    getParent(_element: ImportTreeItem): vscode.ProviderResult<ImportTreeItem> {
+        return null; // Not needed for this implementation
+    }
+
+    refresh(): void {
+        this._onDidChangeTreeData.fire();
+    }
+
+    getSelectedItems(): ImportTreeItem[] {
+        return this.allFileItems.filter(item => item.isChecked);
+    }
+
+    updateCheckState(item: ImportTreeItem, checked: boolean): void {
+        item.isChecked = checked;
+        item.checkboxState = checked
+            ? vscode.TreeItemCheckboxState.Checked
+            : vscode.TreeItemCheckboxState.Unchecked;
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     // Register command: Create Robot Framework Test File
     const createTestFile = vscode.commands.registerCommand(
@@ -56,12 +254,34 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    // Register command: Confirm Imports (for tree view title bar)
+    const confirmImports = vscode.commands.registerCommand(
+        'rfFilesCreator.confirmImports',
+        () => {
+            if (importSelectionResolver) {
+                importSelectionResolver(true);
+            }
+        }
+    );
+
+    // Register command: Cancel Imports (for tree view title bar)
+    const cancelImports = vscode.commands.registerCommand(
+        'rfFilesCreator.cancelImports',
+        () => {
+            if (importSelectionResolver) {
+                importSelectionResolver(false);
+            }
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
         createVariablesFile,
         createLocatorsFile,
-        editImports
+        editImports,
+        confirmImports,
+        cancelImports
     );
 }
 
@@ -267,10 +487,15 @@ interface SelectedItem {
     importType?: ImportType;
 }
 
+// Global reference to dispose tree view when done
+let currentTreeView: vscode.TreeView<ImportTreeItem> | undefined;
+let currentTreeProvider: ImportTreeDataProvider | undefined;
+let importSelectionResolver: ((confirmed: boolean) => void) | undefined;
+
 /**
- * Show file selection using QuickPick with tree-like indentation
+ * Show file selection using TreeView in sidebar
  */
-async function showFileSelectionQuickPick(
+async function showFileSelectionTreeView(
     pyFiles: vscode.Uri[],
     resourceFiles: vscode.Uri[],
     targetDir: string,
@@ -278,159 +503,67 @@ async function showFileSelectionQuickPick(
     pathType: PathType,
     existingImports: ExistingImport[] = []
 ): Promise<SelectedItem[]> {
-    interface SelectableItem extends vscode.QuickPickItem {
-        isFile: boolean;
-        filePath: string;
-        relativePath: string;
-        absolutePath: string;
-        importType?: ImportType;
-        depth: number;
-        folderPath: string;
-    }
+    return new Promise((resolve) => {
+        // Create tree data provider
+        currentTreeProvider = new ImportTreeDataProvider(
+            pyFiles,
+            resourceFiles,
+            targetDir,
+            workspaceRoot,
+            pathType,
+            existingImports
+        );
 
-    const items: SelectableItem[] = [];
-    const preSelectedItems: SelectableItem[] = [];
+        // Show the tree view by setting context
+        vscode.commands.executeCommand('setContext', 'rfImportSelectorVisible', true);
 
-    // Helper to get paths
-    const getRelativePath = (filePath: string) => path.relative(targetDir, filePath).replace(/\\/g, '/');
-    const getAbsolutePath = (filePath: string) => path.relative(workspaceRoot, filePath).replace(/\\/g, '/');
-
-    // Check if import is already selected
-    const isImportSelected = (importPath: string, importType: ImportType): boolean => {
-        return existingImports.some(imp => {
-            // Normalize paths for comparison
-            const normalizedExisting = imp.path.replace(/\\/g, '/');
-            const normalizedNew = importPath.replace(/\\/g, '/');
-            return imp.type === importType && (
-                normalizedExisting === normalizedNew ||
-                normalizedExisting.endsWith(normalizedNew) ||
-                normalizedNew.endsWith(normalizedExisting)
-            );
-        });
-    };
-
-    // Build folder structure for files
-    const buildFolderStructure = (
-        files: vscode.Uri[],
-        importTypes: ImportType[],
-        sectionLabel: string
-    ) => {
-        if (files.length === 0) return;
-
-        // Add section header
-        items.push({
-            label: `$(folder-library) ${sectionLabel}`,
-            kind: vscode.QuickPickItemKind.Separator,
-            isFile: false,
-            filePath: '',
-            relativePath: '',
-            absolutePath: '',
-            depth: 0,
-            folderPath: ''
+        // Create tree view
+        currentTreeView = vscode.window.createTreeView('rfImportSelector', {
+            treeDataProvider: currentTreeProvider,
+            canSelectMany: true,
+            manageCheckboxStateManually: true
         });
 
-        // Group files by folder
-        const folderFiles = new Map<string, vscode.Uri[]>();
-        for (const file of files) {
-            const absPath = getAbsolutePath(file.fsPath);
-            const folderPath = path.dirname(absPath);
-            if (!folderFiles.has(folderPath)) {
-                folderFiles.set(folderPath, []);
-            }
-            folderFiles.get(folderPath)!.push(file);
-        }
-
-        // Sort folders
-        const sortedFolders = Array.from(folderFiles.keys()).sort();
-
-        for (const folder of sortedFolders) {
-            const folderDepth = folder ? folder.split('/').length : 0;
-            const indent = '    '.repeat(folderDepth);
-
-            // Add folder item (as separator)
-            if (folder) {
-                items.push({
-                    label: `${indent}$(folder) ${folder}`,
-                    kind: vscode.QuickPickItemKind.Separator,
-                    isFile: false,
-                    filePath: '',
-                    relativePath: '',
-                    absolutePath: '',
-                    depth: folderDepth,
-                    folderPath: folder
-                });
-            }
-
-            // Add files in this folder
-            const filesInFolder = folderFiles.get(folder)!;
-            filesInFolder.sort((a, b) => path.basename(a.fsPath).localeCompare(path.basename(b.fsPath)));
-
-            for (const file of filesInFolder) {
-                const fileName = path.basename(file.fsPath);
-                const relativePath = getRelativePath(file.fsPath);
-                const absolutePath = getAbsolutePath(file.fsPath);
-                const fileIndent = '    '.repeat(folderDepth + 1);
-                const displayPath = pathType === 'relative' ? relativePath : absolutePath;
-
-                for (const importType of importTypes) {
-                    const icon = importType === 'Library' ? '$(library)' : importType === 'Resource' ? '$(file-code)' : '$(symbol-variable)';
-                    const item: SelectableItem = {
-                        label: `${fileIndent}${icon} ${fileName}`,
-                        description: `[${importType}]`,
-                        detail: displayPath,
-                        isFile: true,
-                        filePath: file.fsPath,
-                        relativePath,
-                        absolutePath,
-                        importType,
-                        depth: folderDepth + 1,
-                        folderPath: folder
-                    };
-                    items.push(item);
-
-                    // Check if this import already exists
-                    if (isImportSelected(relativePath, importType) || isImportSelected(absolutePath, importType)) {
-                        preSelectedItems.push(item);
-                    }
+        // Handle checkbox changes
+        currentTreeView.onDidChangeCheckboxState(e => {
+            for (const [item, state] of e.items) {
+                if (item.isFile) {
+                    currentTreeProvider?.updateCheckState(
+                        item,
+                        state === vscode.TreeItemCheckboxState.Checked
+                    );
                 }
             }
-        }
-    };
-
-    // Build structure for both file types
-    buildFolderStructure(pyFiles, ['Library', 'Variables'], 'Python Files (.py)');
-    buildFolderStructure(resourceFiles, ['Resource', 'Variables'], 'Resource Files (.resource)');
-
-    // Show QuickPick
-    const quickPick = vscode.window.createQuickPick<SelectableItem>();
-    quickPick.items = items;
-    quickPick.canSelectMany = true;
-    quickPick.title = existingImports.length > 0 ? 'Edit imports (pre-selected are current imports)' : 'Select files to import';
-    quickPick.placeholder = 'Check files to import (Enter to confirm, Esc to skip)';
-
-    // Pre-select existing imports
-    quickPick.selectedItems = preSelectedItems;
-
-    const result = await new Promise<SelectableItem[]>((resolve) => {
-        quickPick.onDidAccept(() => {
-            resolve([...quickPick.selectedItems]);
-            quickPick.hide();
         });
-        quickPick.onDidHide(() => {
-            resolve([]);
-            quickPick.dispose();
-        });
-        quickPick.show();
+
+        // Show the tree view
+        vscode.commands.executeCommand('rfImportSelector.focus');
+
+        // Set up resolver for confirm/cancel buttons
+        importSelectionResolver = (confirmed: boolean) => {
+            const selected = confirmed
+                ? currentTreeProvider?.getSelectedItems() || []
+                : [];
+
+            // Convert to SelectedItem format
+            const result = selected.map(item => ({
+                isFile: true,
+                filePath: item.filePath,
+                relativePath: item.relativePath,
+                absolutePath: item.absolutePath,
+                importType: item.importType
+            }));
+
+            // Hide the tree view
+            vscode.commands.executeCommand('setContext', 'rfImportSelectorVisible', false);
+            currentTreeView?.dispose();
+            currentTreeView = undefined;
+            currentTreeProvider = undefined;
+            importSelectionResolver = undefined;
+
+            resolve(result);
+        };
     });
-
-    // Convert to SelectedItem format
-    return result.filter(item => item.isFile).map(item => ({
-        isFile: true,
-        filePath: item.filePath,
-        relativePath: item.relativePath,
-        absolutePath: item.absolutePath,
-        importType: item.importType
-    }));
 }
 
 /**
@@ -479,7 +612,7 @@ async function editRobotFileImports(uri: vscode.Uri): Promise<void> {
     }
 
     // Show file selection with pre-selected existing imports
-    const selectedImports = await showFileSelectionQuickPick(
+    const selectedImports = await showFileSelectionTreeView(
         pyFiles,
         resourceFiles,
         targetDir,
@@ -575,7 +708,7 @@ async function createRobotFileWithImports(
         selectedPathType = pathTypeResult;
 
         // Show file selection
-        selectedImports = await showFileSelectionQuickPick(pyFiles, resourceFiles, targetDir, workspaceRoot, selectedPathType);
+        selectedImports = await showFileSelectionTreeView(pyFiles, resourceFiles, targetDir, workspaceRoot, selectedPathType);
     }
 
     // Generate file content

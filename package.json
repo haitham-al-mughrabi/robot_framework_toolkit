@@ -3,7 +3,7 @@
   "displayName": "Robot Framework Files Creator",
   "description": "Create Robot Framework test, resource, variables, and locators files with predefined templates",
   "version": "1.0.0",
-  "publisher": "your-publisher-name",
+  "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -41,9 +41,41 @@
       {
         "command": "rfFilesCreator.editImports",
         "title": "Edit Robot Framework Imports"
+      },
+      {
+        "command": "rfFilesCreator.confirmImports",
+        "title": "Confirm Imports",
+        "icon": "$(check)"
+      },
+      {
+        "command": "rfFilesCreator.cancelImports",
+        "title": "Cancel",
+        "icon": "$(close)"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "rfImportSelector",
+          "name": "RF Import Selector",
+          "when": "rfImportSelectorVisible",
+          "icon": "$(checklist)"
+        }
+      ]
+    },
     "menus": {
+      "view/title": [
+        {
+          "command": "rfFilesCreator.confirmImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rfFilesCreator.cancelImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@2"
+        }
+      ],
       "explorer/context": [
         {
           "command": "rfFilesCreator.createTestFile",
