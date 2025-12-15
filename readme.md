@@ -19,7 +19,8 @@ Right-click on any folder in the Explorer to see the following options:
    - Creates an empty Python file for locators
 
 5. **Edit Robot Framework Imports** (on `.robot` and `.resource` files)
-   - Browse and select files to import as Libraries, Resources, or Variables
+   - Browse all importable files in a unified view (no more separate Python/Resource sections)
+   - Select files to import as Libraries, Resources, or Variables
    - Preserve and pre-select existing imports
    - Choose between relative paths or workspace paths
    - Collapsible folder structure for easy navigation
@@ -91,6 +92,7 @@ Empty file ready for your Python locator definitions.
 ## Import Selection Features
 
 - **File Filtering**: Only shows files in allowed project folders (Libraries, Tests, Utilities, Resources, POM, etc.)
+- **Unified File View**: Browse all importable files in a single unified view (Python, Resource, and other supported files)
 - **Import Type Selection**: Choose to import files as Library, Resource, or Variables
 - **Path Options**: Select between relative paths or workspace paths
 - **Preserve Existing**: Existing imports are pre-selected when editing

@@ -110,8 +110,7 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
     private searchFilter: string = ''; // Store current search term
 
     constructor(
-        private pyFiles: vscode.Uri[],
-        private resourceFiles: vscode.Uri[],
+        private allFiles: vscode.Uri[],
         private targetDir: string,
         private workspaceRoot: string,
         private existingImports: ExistingImport[] = [],
@@ -218,12 +217,117 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
             return sectionItem;
         };
 
-        // Build sections - each file appears once with import type options
-        const pySection = buildSection(this.pyFiles, ['Library', 'Variables'], 'Python Files (.py)', '.py');
-        const resourceSection = buildSection(this.resourceFiles, ['Resource', 'Variables'], 'Resource Files (.resource)', '.resource');
+        // Use all files for the unified tree
+        const allFilesSection = this.createUnifiedFileTree(this.allFiles);
 
-        if (pySection) this.rootItems.push(pySection);
-        if (resourceSection) this.rootItems.push(resourceSection);
+        if (allFilesSection) this.rootItems.push(allFilesSection);
+    }
+
+    /**
+     * Create a unified file tree with all file types combined
+     */
+    private createUnifiedFileTree(files: vscode.Uri[]): ImportTreeItem | null {
+        if (files.length === 0) return null;
+
+        // Helper to get paths
+        const getRelativePath = (filePath: string) => path.relative(this.targetDir, filePath).replace(/\\/g, '/');
+        const getAbsolutePath = (filePath: string) => path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
+
+        // Find existing import type for a file
+        const findExistingImportType = (importPath: string): ImportType | null => {
+            for (const imp of this.existingImports) {
+                const normalizedExisting = imp.path.replace(/\\/g, '/');
+                const normalizedNew = importPath.replace(/\\/g, '/');
+                if (normalizedExisting === normalizedNew ||
+                    normalizedExisting.endsWith(normalizedNew) ||
+                    normalizedNew.endsWith(normalizedExisting)) {
+                    return imp.type;
+                }
+            }
+            return null;
+        };
+
+        // Check if a file is suggested
+        const isFileSuggested = (fileUri: vscode.Uri): boolean => {
+            return this.suggestedFiles.some(suggestedFile =>
+                suggestedFile.fsPath === fileUri.fsPath
+            );
+        };
+
+        // Determine appropriate import types based on file extension
+        const getAvailableImportTypes = (fileUri: vscode.Uri): ImportType[] => {
+            const ext = path.extname(fileUri.fsPath).toLowerCase();
+            if (ext === '.py') {
+                return ['Library', 'Variables']; // Python files are typically libraries or variables
+            } else if (ext === '.resource' || ext === '.robot') {
+                return ['Resource', 'Variables']; // Resource/Robot files are typically resources or variables
+            } else {
+                // For other files, provide all options but default to Resource or Variables
+                return ['Library', 'Resource', 'Variables'];
+            }
+        };
+
+        // Create folder structure
+        const folderMap = new Map<string, ImportTreeItem>();
+        const sectionItem = new ImportTreeItem(
+            'All Importable Files',
+            vscode.TreeItemCollapsibleState.Collapsed
+        );
+        sectionItem.iconPath = new vscode.ThemeIcon('folder-library');
+
+        for (const file of files) {
+            const absPath = getAbsolutePath(file.fsPath);
+            const relativePath = getRelativePath(file.fsPath);
+            const parts = absPath.split('/');
+            const fileName = parts.pop()!;
+
+            // Build folder hierarchy
+            let currentParent = sectionItem;
+            let currentPath = '';
+
+            for (const folderName of parts) {
+                currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+
+                if (!folderMap.has(currentPath)) {
+                    const folderItem = new ImportTreeItem(
+                        folderName,
+                        vscode.TreeItemCollapsibleState.Collapsed
+                    );
+                    folderMap.set(currentPath, folderItem);
+                    currentParent.children.push(folderItem);
+                }
+                currentParent = folderMap.get(currentPath)!;
+            }
+
+            // Find if this file has an existing import
+            const existingType = findExistingImportType(relativePath) || findExistingImportType(absPath);
+
+            // Check if this file is suggested
+            const suggested = isFileSuggested(file);
+
+            // Determine available import types based on file extension
+            const availableImportTypes = getAvailableImportTypes(file);
+
+            // Add single file item with appropriate import type options
+            const fileItem = new ImportTreeItem(
+                fileName,
+                vscode.TreeItemCollapsibleState.None,
+                {
+                    isFile: true,
+                    filePath: file.fsPath,
+                    relativePath,
+                    absolutePath: absPath,
+                    fileExtension: path.extname(file.fsPath),
+                    selectedImportType: existingType,
+                    availableImportTypes,
+                    isSuggested: suggested
+                }
+            );
+            currentParent.children.push(fileItem);
+            this.allFileItems.push(fileItem);
+        }
+
+        return sectionItem;
     }
 
     getTreeItem(element: ImportTreeItem): vscode.TreeItem {
@@ -764,8 +868,8 @@ let currentPathType: PathType = 'relative';
  * Show file selection using TreeView in sidebar
  */
 async function showFileSelectionTreeView(
-    pyFiles: vscode.Uri[],
-    resourceFiles: vscode.Uri[],
+    allFiles: vscode.Uri[], // Combined array of all importable files
+    _unusedParam: vscode.Uri[], // Kept for compatibility but not used in unified view
     targetDir: string,
     workspaceRoot: string,
     pathType: PathType,
@@ -775,10 +879,9 @@ async function showFileSelectionTreeView(
     currentPathType = pathType;
 
     return new Promise((resolve) => {
-        // Create tree data provider
+        // Create tree data provider with all files combined
         currentTreeProvider = new ImportTreeDataProvider(
-            pyFiles,
-            resourceFiles,
+            allFiles, // Use the combined files directly
             targetDir,
             workspaceRoot,
             existingImports,
@@ -886,13 +989,19 @@ async function editRobotFileImports(uri: vscode.Uri): Promise<void> {
 
         progress.report({ increment: 20, message: "Finding Resource files..." });
 
-        const allResourceFiles = await vscode.workspace.findFiles('**/*.resource', '{**/node_modules/**,**/venv/**,**/.venv/**}');
+        const allResourceFiles = await vscode.workspace.findFiles('**/*.{resource,robot}', '{**/node_modules/**,**/venv/**,**/.venv/**}');
+
+        progress.report({ increment: 10, message: "Finding additional importable files..." });
+
+        // Optionally, include more file types that might be importable
+        const allOtherFiles = await vscode.workspace.findFiles('**/*.{txt,csv,json,yaml,yml}', '{**/node_modules/**,**/venv/**,**/.venv/**}');
 
         // Filter to allowed project folders
         const pyFiles = filterProjectFiles(allPyFiles, workspaceRoot);
         const resourceFiles = filterProjectFiles(allResourceFiles, workspaceRoot);
+        const otherFiles = filterProjectFiles(allOtherFiles, workspaceRoot); // For additional file types
 
-        if (pyFiles.length === 0 && resourceFiles.length === 0) {
+        if (pyFiles.length === 0 && resourceFiles.length === 0 && otherFiles.length === 0) {
             vscode.window.showWarningMessage('No importable files found in project folders (Libraries, Tests, Utilities, Resources, POM).');
             return;
         }
@@ -910,10 +1019,13 @@ async function editRobotFileImports(uri: vscode.Uri): Promise<void> {
             return; // User cancelled
         }
 
+        // Combine all file types for selection
+        const allImportableFiles = [...pyFiles, ...resourceFiles, ...otherFiles];
+
         // Show file selection with pre-selected existing imports and suggested files highlighted
         const selectionResult = await showFileSelectionTreeView(
-            pyFiles,
-            resourceFiles,
+            allImportableFiles,
+            [], // Second parameter not used in unified view, but kept for function signature compatibility
             targetDir,
             workspaceRoot,
             selectedPathType,
@@ -1002,16 +1114,24 @@ async function createRobotFileWithImports(
 
         progress.report({ increment: 40, message: "Finding Resource files..." });
 
-        const allResourceFiles = await vscode.workspace.findFiles('**/*.resource', '{**/node_modules/**,**/venv/**,**/.venv/**}');
+        const allResourceFiles = await vscode.workspace.findFiles('**/*.{resource,robot}', '{**/node_modules/**,**/venv/**,**/.venv/**}');
+
+        progress.report({ increment: 10, message: "Finding additional importable files..." });
+
+        // Optionally, include more file types that might be importable
+        const allOtherFiles = await vscode.workspace.findFiles('**/*.{txt,csv,json,yaml,yml}', '{**/node_modules/**,**/venv/**,**/.venv/**}');
 
         // Filter to allowed project folders
         const pyFiles = filterProjectFiles(allPyFiles, workspaceRoot);
         const resourceFiles = filterProjectFiles(allResourceFiles, workspaceRoot);
+        const otherFiles = filterProjectFiles(allOtherFiles, workspaceRoot); // For additional file types
+
+        const combinedFiles = [...pyFiles, ...resourceFiles, ...otherFiles];
 
         let selectedImports: SelectedItem[] = [];
         let selectedPathType: PathType = 'relative';
 
-        if (pyFiles.length > 0 || resourceFiles.length > 0) {
+        if (combinedFiles.length > 0) {
             // Ask for path type
             const pathTypeResult = await selectPathType();
             if (pathTypeResult === undefined) {
@@ -1025,7 +1145,8 @@ async function createRobotFileWithImports(
             progress.report({ increment: 20, message: "Preparing import selection..." });
 
             // Show file selection (passing empty array for suggested files since we don't have content to analyze yet)
-            const selectionResult = await showFileSelectionTreeView(pyFiles, resourceFiles, targetDir, workspaceRoot, selectedPathType, [], []);
+            // Use the pre-combined files that include all types
+            const selectionResult = await showFileSelectionTreeView(combinedFiles, [], targetDir, workspaceRoot, selectedPathType, [], []);
 
             // If user canceled, exit early (no file will be created)
             if (selectionResult === null) {
