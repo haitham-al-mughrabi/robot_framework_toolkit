@@ -37,6 +37,10 @@
       {
         "command": "rfFilesCreator.createLocatorsFile",
         "title": "Create Robot Framework Locators File"
+      },
+      {
+        "command": "rfFilesCreator.editImports",
+        "title": "Edit Robot Framework Imports"
       }
     ],
     "menus": {
@@ -60,6 +64,11 @@
           "command": "rfFilesCreator.createLocatorsFile",
           "group": "navigation@13",
           "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "rfFilesCreator.editImports",
+          "group": "navigation@14",
+          "when": "resourceExtname == .robot || resourceExtname == .resource"
         }
       ]
     }
