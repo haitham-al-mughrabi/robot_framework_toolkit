@@ -7,9 +7,14 @@
   "engines": {
     "vscode": "^1.74.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/haitham-almughrabi/rf-files-creator.git"
+  },
   "categories": [
     "Other",
-    "Snippets"
+    "Snippets",
+    "Testing"
   ],
   "keywords": [
     "robot framework",
@@ -18,7 +23,13 @@
     "resource",
     "locators"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:rfFilesCreator.createTestFile",
+    "onCommand:rfFilesCreator.createResourceFile",
+    "onCommand:rfFilesCreator.createVariablesFile",
+    "onCommand:rfFilesCreator.createLocatorsFile",
+    "onCommand:rfFilesCreator.editImports"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
