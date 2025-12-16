@@ -957,6 +957,143 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    // Register command: Refresh Imports
+    const refreshImports = vscode.commands.registerCommand(
+        'rfFilesCreator.refreshImports',
+        async () => {
+            const currentTargetFile = getTargetFile();
+            if (currentTargetFile) {
+                // Reload imports for the current target file
+                await loadImportsForFile(currentTargetFile);
+
+                // If it was locked, maintain the lock
+                if (isTargetLocked && lockedTargetFile) {
+                    lockTargetFile(lockedTargetFile);
+                }
+
+                vscode.window.showInformationMessage('Imports refreshed successfully.');
+            } else {
+                vscode.window.showWarningMessage('No target file to refresh.');
+            }
+        }
+    );
+
+    // Register command: Delete Import
+    const deleteImport = vscode.commands.registerCommand(
+        'rfFilesCreator.deleteImport',
+        async (item: ImportTreeItem) => {
+            if (item && item.contextValue === 'currentImport') {
+                const targetFile = getTargetFile();
+                if (!targetFile) {
+                    vscode.window.showErrorMessage('No target file selected.');
+                    return;
+                }
+
+                // Show confirmation dialog
+                const confirm = await vscode.window.showWarningMessage(
+                    `Remove import "${item.label}" from the file?`,
+                    { modal: true },
+                    'Yes', 'No'
+                );
+
+                if (confirm === 'Yes') {
+                    try {
+                        // Read current file content
+                        const currentContent = fs.readFileSync(targetFile, 'utf8');
+
+                        // Remove the import from the content
+                        const updatedContent = removeImportFromContent(currentContent, item.label, item.description as string);
+
+                        // Write back to file
+                        fs.writeFileSync(targetFile, updatedContent, 'utf8');
+
+                        // Refresh the document if it's open
+                        const document = await vscode.workspace.openTextDocument(targetFile);
+                        await vscode.window.showTextDocument(document);
+
+                        // Reload the imports to reflect the change
+                        const wasLocked = isTargetLocked;
+                        const lockedFile = lockedTargetFile;
+
+                        await loadImportsForFile(targetFile);
+
+                        // Restore lock if it existed
+                        if (wasLocked && lockedFile) {
+                            lockTargetFile(lockedFile);
+                        }
+
+                        vscode.window.showInformationMessage(`Removed import: ${item.label}`);
+                    } catch (error) {
+                        const msg = error instanceof Error ? error.message : 'Unknown error';
+                        vscode.window.showErrorMessage(`Failed to remove import: ${msg}`);
+                    }
+                }
+            }
+        }
+    );
+
+    // Register command: View Current Import
+    const viewCurrentImport = vscode.commands.registerCommand(
+        'rfFilesCreator.viewCurrentImport',
+        async (item: ImportTreeItem) => {
+            if (item && item.contextValue === 'currentImport') {
+                // Find the actual file path by searching in the workspace
+                const importPath = item.label as string;
+                let filePath: string | undefined;
+
+                // Try to find the file in the workspace
+                const allFiles = await vscode.workspace.findFiles('**/*.{py,robot,resource,txt,csv,json,yaml,yml}', '{**/node_modules/**,**/venv/**,**/.venv/**,**/__pycache__/**}');
+
+                for (const file of allFiles) {
+                    const fileName = path.basename(file.fsPath);
+                    if (fileName === importPath || file.fsPath.includes(importPath)) {
+                        filePath = file.fsPath;
+                        break;
+                    }
+                }
+
+                if (!filePath) {
+                    // If we can't find the file exactly, try to construct a path relative to the workspace
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (workspaceFolders) {
+                        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                        const potentialPath = path.join(workspaceRoot, importPath);
+
+                        // Check if the potential path exists
+                        if (fs.existsSync(potentialPath)) {
+                            filePath = potentialPath;
+                        } else {
+                            // Try with different combinations
+                            const normalizedImportPath = importPath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+                            const otherPotentialPath = path.join(workspaceRoot, normalizedImportPath);
+                            if (fs.existsSync(otherPotentialPath)) {
+                                filePath = otherPotentialPath;
+                            }
+                        }
+                    }
+                }
+
+                if (filePath) {
+                    try {
+                        const document = await vscode.workspace.openTextDocument(filePath);
+                        await vscode.window.showTextDocument(document, { preview: true });
+
+                        // Auto-lock the target if not already locked
+                        const targetFile = getTargetFile();
+                        if (targetFile && !isTargetLocked) {
+                            lockTargetFile(targetFile);
+                        }
+                    } catch (error) {
+                        const msg = error instanceof Error ? error.message : 'Unknown error';
+                        vscode.window.showErrorMessage(`Failed to open file: ${msg}`);
+                    }
+                } else {
+                    vscode.window.showWarningMessage(`Could not locate file: ${importPath}`);
+                }
+            }
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
@@ -972,7 +1109,10 @@ export function activate(context: vscode.ExtensionContext) {
         expandAll,
         collapseAll,
         viewFile,
-        goToTarget
+        goToTarget,
+        refreshImports,
+        deleteImport,
+        viewCurrentImport
     );
 }
 
@@ -1104,6 +1244,51 @@ function analyzeFileContentForSuggestions(fileContent: string, allPyFiles: vscod
 
     // Remove duplicates
     return [...new Set(suggestions)];
+}
+
+/**
+ * Remove a specific import from the file content
+ */
+function removeImportFromContent(fileContent: string, importPath: string, importType: string): string {
+    const lines = fileContent.split('\n');
+    const result: string[] = [];
+
+    let inSettings = false;
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        // Check for Settings section
+        if (trimmedLine.match(/^\*\*\*\s*Settings\s*\*\*\*/i)) {
+            inSettings = true;
+            result.push(line);
+            continue;
+        }
+
+        // Check for other sections (exit Settings)
+        if (trimmedLine.match(/^\*\*\*\s*(Test Cases|Keywords|Variables|Tasks|Comments)\s*\*\*\*/i)) {
+            inSettings = false;
+            result.push(line);
+            continue;
+        }
+
+        if (inSettings && trimmedLine) {
+            // Check if this line is the import we want to remove
+            const isLibraryImport = importType === 'Library' && trimmedLine.match(/^Library\s+/i);
+            const isResourceImport = importType === 'Resource' && trimmedLine.match(/^Resource\s+/i);
+            const isVariablesImport = importType === 'Variables' && trimmedLine.match(/^Variables\s+/i);
+
+            if ((isLibraryImport || isResourceImport || isVariablesImport) &&
+                trimmedLine.includes(importPath)) {
+                // Skip this line (remove the import)
+                continue;
+            }
+        }
+
+        result.push(line);
+    }
+
+    return result.join('\n');
 }
 
 /**
