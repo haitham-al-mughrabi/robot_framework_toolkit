@@ -95,16 +95,6 @@
         "icon": "$(go-to-file)"
       },
       {
-        "command": "rfFilesCreator.lockTarget",
-        "title": "Lock Target File",
-        "icon": "$(pin)"
-      },
-      {
-        "command": "rfFilesCreator.unlockTarget",
-        "title": "Unlock Target File",
-        "icon": "$(pinned)"
-      },
-      {
         "command": "rfFilesCreator.goToTarget",
         "title": "Go to Target File",
         "icon": "$(file-symlink-file)"
@@ -136,44 +126,39 @@
           "group": "navigation@0"
         },
         {
-          "command": "rfFilesCreator.unlockTarget",
-          "when": "view == rfImportSelector && rfTargetLocked",
-          "group": "navigation@1"
-        },
-        {
           "command": "rfFilesCreator.searchImports",
           "when": "view == rfImportSelector",
-          "group": "navigation@2"
+          "group": "navigation@1"
         },
         {
           "command": "rfFilesCreator.clearSearch",
           "when": "view == rfImportSelector",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "rfFilesCreator.expandAll",
           "when": "view == rfImportSelector",
-          "group": "navigation@4"
+          "group": "navigation@3"
         },
         {
           "command": "rfFilesCreator.collapseAll",
           "when": "view == rfImportSelector",
-          "group": "navigation@5"
+          "group": "navigation@4"
         },
         {
           "command": "rfFilesCreator.previewImports",
           "when": "view == rfImportSelector",
-          "group": "navigation@6"
+          "group": "navigation@5"
         },
         {
           "command": "rfFilesCreator.confirmImports",
           "when": "view == rfImportSelector",
-          "group": "navigation@7"
+          "group": "navigation@6"
         },
         {
           "command": "rfFilesCreator.cancelImports",
           "when": "view == rfImportSelector",
-          "group": "navigation@8"
+          "group": "navigation@7"
         }
       ],
       "view/item/context": [
