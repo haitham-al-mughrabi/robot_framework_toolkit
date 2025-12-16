@@ -93,6 +93,21 @@
         "command": "rfFilesCreator.viewFile",
         "title": "View File",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "rfFilesCreator.lockTarget",
+        "title": "Lock Target File",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "rfFilesCreator.unlockTarget",
+        "title": "Unlock Target File",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "rfFilesCreator.goToTarget",
+        "title": "Go to Target File",
+        "icon": "$(file-symlink-file)"
       }
     ],
     "viewsContainers": {
@@ -116,39 +131,49 @@
     "menus": {
       "view/title": [
         {
-          "command": "rfFilesCreator.searchImports",
-          "when": "view == rfImportSelector",
+          "command": "rfFilesCreator.goToTarget",
+          "when": "view == rfImportSelector && rfTargetLocked",
           "group": "navigation@0"
         },
         {
-          "command": "rfFilesCreator.clearSearch",
-          "when": "view == rfImportSelector",
+          "command": "rfFilesCreator.unlockTarget",
+          "when": "view == rfImportSelector && rfTargetLocked",
           "group": "navigation@1"
         },
         {
-          "command": "rfFilesCreator.expandAll",
+          "command": "rfFilesCreator.searchImports",
           "when": "view == rfImportSelector",
           "group": "navigation@2"
         },
         {
-          "command": "rfFilesCreator.collapseAll",
+          "command": "rfFilesCreator.clearSearch",
           "when": "view == rfImportSelector",
           "group": "navigation@3"
         },
         {
-          "command": "rfFilesCreator.previewImports",
+          "command": "rfFilesCreator.expandAll",
           "when": "view == rfImportSelector",
           "group": "navigation@4"
         },
         {
-          "command": "rfFilesCreator.confirmImports",
+          "command": "rfFilesCreator.collapseAll",
           "when": "view == rfImportSelector",
           "group": "navigation@5"
         },
         {
-          "command": "rfFilesCreator.cancelImports",
+          "command": "rfFilesCreator.previewImports",
           "when": "view == rfImportSelector",
           "group": "navigation@6"
+        },
+        {
+          "command": "rfFilesCreator.confirmImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@7"
+        },
+        {
+          "command": "rfFilesCreator.cancelImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@8"
         }
       ],
       "view/item/context": [

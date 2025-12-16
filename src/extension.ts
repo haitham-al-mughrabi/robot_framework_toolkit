@@ -482,6 +482,10 @@ class WelcomeTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem
 // Welcome tree view provider
 let welcomeTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
 
+// Target file locking mechanism
+let lockedTargetFile: string | undefined;
+let isTargetLocked: boolean = false;
+
 /**
  * Initialize the tree view with welcome content
  */
@@ -501,15 +505,66 @@ function isRobotFrameworkFile(filePath: string): boolean {
 }
 
 /**
- * Load imports for the currently active Robot Framework file
+ * Get the current target file (locked or active)
  */
-async function loadImportsForActiveFile(): Promise<void> {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (!activeEditor) {
-        return;
+function getTargetFile(): string | undefined {
+    if (isTargetLocked && lockedTargetFile) {
+        return lockedTargetFile;
     }
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath)) {
+        return activeEditor.document.uri.fsPath;
+    }
+    return undefined;
+}
 
-    const filePath = activeEditor.document.uri.fsPath;
+/**
+ * Lock the current target file
+ */
+function lockTargetFile(filePath: string): void {
+    lockedTargetFile = filePath;
+    isTargetLocked = true;
+    vscode.commands.executeCommand('setContext', 'rfTargetLocked', true);
+    updateTreeViewTitle();
+}
+
+/**
+ * Unlock the target file
+ */
+function unlockTargetFile(): void {
+    lockedTargetFile = undefined;
+    isTargetLocked = false;
+    vscode.commands.executeCommand('setContext', 'rfTargetLocked', false);
+    // Reload for current active file
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath)) {
+        loadImportsForFile(activeEditor.document.uri.fsPath);
+    } else {
+        // Show welcome if no robot file is active
+        if (currentTreeView) {
+            currentTreeView.dispose();
+            currentTreeView = undefined;
+            currentTreeProvider = undefined;
+        }
+        initializeTreeView();
+    }
+}
+
+/**
+ * Update tree view title to show target file
+ */
+function updateTreeViewTitle(): void {
+    if (currentTreeView && lockedTargetFile) {
+        currentTreeView.title = `Import Selector (${path.basename(lockedTargetFile)})`;
+    } else if (currentTreeView) {
+        currentTreeView.title = 'Import Selector';
+    }
+}
+
+/**
+ * Load imports for a specific Robot Framework file
+ */
+async function loadImportsForFile(filePath: string): Promise<void> {
     if (!isRobotFrameworkFile(filePath)) {
         return;
     }
@@ -636,7 +691,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize the tree view - check if active file is a robot file
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath)) {
-        loadImportsForActiveFile();
+        loadImportsForFile(activeEditor.document.uri.fsPath);
     } else {
         initializeTreeView();
     }
@@ -644,6 +699,11 @@ export function activate(context: vscode.ExtensionContext) {
     // Listen for active editor changes to update the tree view
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
+            // Skip if target is locked - keep showing the locked file's imports
+            if (isTargetLocked) {
+                return;
+            }
+
             if (editor && isRobotFrameworkFile(editor.document.uri.fsPath)) {
                 // Dispose current tree view if exists
                 if (currentTreeView) {
@@ -655,7 +715,7 @@ export function activate(context: vscode.ExtensionContext) {
                     welcomeTreeView.dispose();
                     welcomeTreeView = undefined;
                 }
-                loadImportsForActiveFile();
+                loadImportsForFile(editor.document.uri.fsPath);
             } else if (!currentTreeView) {
                 // Show welcome view if no robot file is open and no import selection is active
                 if (welcomeTreeView) {
@@ -665,6 +725,29 @@ export function activate(context: vscode.ExtensionContext) {
                 initializeTreeView();
             }
         })
+    );
+
+    // Register command: Lock Target File
+    const lockTarget = vscode.commands.registerCommand(
+        'rfFilesCreator.lockTarget',
+        () => {
+            const targetFile = getTargetFile();
+            if (targetFile) {
+                lockTargetFile(targetFile);
+                vscode.window.showInformationMessage(`Locked imports to: ${path.basename(targetFile)}`);
+            } else {
+                vscode.window.showWarningMessage('No Robot Framework file is currently active to lock.');
+            }
+        }
+    );
+
+    // Register command: Unlock Target File
+    const unlockTarget = vscode.commands.registerCommand(
+        'rfFilesCreator.unlockTarget',
+        () => {
+            unlockTargetFile();
+            vscode.window.showInformationMessage('Import target unlocked. Will follow active file.');
+        }
     );
 
     // Register command: Create Robot Framework Test File
@@ -833,18 +916,45 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // Register command: View File (open in editor)
+    // Register command: View File (open in editor) - auto-locks target
     const viewFile = vscode.commands.registerCommand(
         'rfFilesCreator.viewFile',
         async (item: ImportTreeItem) => {
             if (item && item.isFile && item.filePath) {
+                // Auto-lock the current target file before viewing another file
+                if (!isTargetLocked) {
+                    const targetFile = getTargetFile();
+                    if (targetFile) {
+                        lockTargetFile(targetFile);
+                    }
+                }
+
                 try {
                     const document = await vscode.workspace.openTextDocument(item.filePath);
-                    await vscode.window.showTextDocument(document, { preview: true, preserveFocus: true });
+                    await vscode.window.showTextDocument(document, { preview: true });
                 } catch (error) {
                     const msg = error instanceof Error ? error.message : 'Unknown error';
                     vscode.window.showErrorMessage(`Failed to open file: ${msg}`);
                 }
+            }
+        }
+    );
+
+    // Register command: Go to Target File (navigate back to the locked target)
+    const goToTarget = vscode.commands.registerCommand(
+        'rfFilesCreator.goToTarget',
+        async () => {
+            const targetFile = getTargetFile();
+            if (targetFile) {
+                try {
+                    const document = await vscode.workspace.openTextDocument(targetFile);
+                    await vscode.window.showTextDocument(document);
+                } catch (error) {
+                    const msg = error instanceof Error ? error.message : 'Unknown error';
+                    vscode.window.showErrorMessage(`Failed to open target file: ${msg}`);
+                }
+            } else {
+                vscode.window.showWarningMessage('No target file is set.');
             }
         }
     );
@@ -863,7 +973,10 @@ export function activate(context: vscode.ExtensionContext) {
         clearSearch,
         expandAll,
         collapseAll,
-        viewFile
+        viewFile,
+        lockTarget,
+        unlockTarget,
+        goToTarget
     );
 }
 
