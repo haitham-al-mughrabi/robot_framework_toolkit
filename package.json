@@ -100,7 +100,7 @@
         {
           "id": "rf-toolkit",
           "title": "Robot Framework Toolkit",
-          "icon": "$(beaker)"
+          "icon": "$(symbol-misc)"
         }
       ]
     },

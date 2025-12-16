@@ -492,9 +492,180 @@ function initializeTreeView(): void {
     });
 }
 
+/**
+ * Check if a file is a Robot Framework file
+ */
+function isRobotFrameworkFile(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return ext === '.robot' || ext === '.resource';
+}
+
+/**
+ * Load imports for the currently active Robot Framework file
+ */
+async function loadImportsForActiveFile(): Promise<void> {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (!activeEditor) {
+        return;
+    }
+
+    const filePath = activeEditor.document.uri.fsPath;
+    if (!isRobotFrameworkFile(filePath)) {
+        return;
+    }
+
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return;
+    }
+
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    const targetDir = path.dirname(filePath);
+
+    // Dispose the welcome tree view if it exists
+    if (welcomeTreeView) {
+        welcomeTreeView.dispose();
+        welcomeTreeView = undefined;
+    }
+
+    // Read file content and parse existing imports
+    let fileContent: string;
+    try {
+        fileContent = fs.readFileSync(filePath, 'utf8');
+    } catch {
+        initializeTreeView();
+        return;
+    }
+
+    const existingImports = parseExistingImports(fileContent);
+
+    // Find importable files
+    const allPyFiles = await vscode.workspace.findFiles('**/*.py', '{**/node_modules/**,**/venv/**,**/.venv/**,**/__pycache__/**}');
+    const allResourceFiles = await vscode.workspace.findFiles('**/*.{resource,robot}', '{**/node_modules/**,**/venv/**,**/.venv/**}');
+
+    // Filter to allowed project folders
+    const pyFiles = filterProjectFiles(allPyFiles, workspaceRoot);
+    const resourceFiles = filterProjectFiles(allResourceFiles, workspaceRoot);
+    const allImportableFiles = [...pyFiles, ...resourceFiles];
+
+    if (allImportableFiles.length === 0) {
+        initializeTreeView();
+        return;
+    }
+
+    // Analyze file content for import suggestions
+    const suggestedFiles = analyzeFileContentForSuggestions(fileContent, allPyFiles, allResourceFiles);
+
+    // Create tree data provider
+    currentTreeProvider = new ImportTreeDataProvider(
+        allImportableFiles,
+        targetDir,
+        workspaceRoot,
+        existingImports,
+        suggestedFiles
+    );
+
+    // Show the tree view by setting context
+    vscode.commands.executeCommand('setContext', 'rfImportSelectorVisible', true);
+
+    // Create tree view
+    currentTreeView = vscode.window.createTreeView('rfImportSelector', {
+        treeDataProvider: currentTreeProvider,
+        canSelectMany: true,
+        manageCheckboxStateManually: true
+    });
+
+    // Handle checkbox changes
+    currentTreeView.onDidChangeCheckboxState(e => {
+        for (const [item, state] of e.items) {
+            if (item.isFile) {
+                currentTreeProvider?.toggleSelection(
+                    item,
+                    state === vscode.TreeItemCheckboxState.Checked
+                );
+            }
+        }
+    });
+
+    // Set up resolver for confirm/cancel buttons
+    importSelectionResolver = async (confirmed: boolean) => {
+        if (confirmed) {
+            const selected = currentTreeProvider?.getSelectedItems() || [];
+
+            // Ask for path type
+            const selectedPathType = await selectPathType();
+            if (selectedPathType === undefined) {
+                return; // User cancelled
+            }
+
+            // Convert to SelectedItem format
+            const result: SelectedItem[] = selected.map(item => ({
+                isFile: true,
+                filePath: item.filePath,
+                relativePath: item.relativePath,
+                absolutePath: item.absolutePath,
+                importType: item.selectedImportType || undefined
+            }));
+
+            // Generate new settings section
+            const newSettingsSection = generateSettingsSection(result, selectedPathType);
+
+            // Update file content
+            const currentContent = fs.readFileSync(filePath, 'utf8');
+            const updatedContent = updateSettingsSection(currentContent, newSettingsSection);
+
+            // Write back to file
+            try {
+                fs.writeFileSync(filePath, updatedContent, 'utf8');
+
+                // Refresh the document if it's open
+                const document = await vscode.workspace.openTextDocument(filePath);
+                await vscode.window.showTextDocument(document);
+
+                vscode.window.showInformationMessage(`Updated imports in ${path.basename(filePath)}`);
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                vscode.window.showErrorMessage(`Failed to update file: ${errorMessage}`);
+            }
+        }
+        // Don't cleanup - keep the tree view open for further editing
+    };
+}
+
 export function activate(context: vscode.ExtensionContext) {
-    // Initialize the tree view with a welcome provider
-    initializeTreeView();
+    // Initialize the tree view - check if active file is a robot file
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath)) {
+        loadImportsForActiveFile();
+    } else {
+        initializeTreeView();
+    }
+
+    // Listen for active editor changes to update the tree view
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            if (editor && isRobotFrameworkFile(editor.document.uri.fsPath)) {
+                // Dispose current tree view if exists
+                if (currentTreeView) {
+                    currentTreeView.dispose();
+                    currentTreeView = undefined;
+                    currentTreeProvider = undefined;
+                }
+                if (welcomeTreeView) {
+                    welcomeTreeView.dispose();
+                    welcomeTreeView = undefined;
+                }
+                loadImportsForActiveFile();
+            } else if (!currentTreeView) {
+                // Show welcome view if no robot file is open and no import selection is active
+                if (welcomeTreeView) {
+                    welcomeTreeView.dispose();
+                    welcomeTreeView = undefined;
+                }
+                initializeTreeView();
+            }
+        })
+    );
 
     // Register command: Create Robot Framework Test File
     const createTestFile = vscode.commands.registerCommand(
