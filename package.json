@@ -1,7 +1,7 @@
 {
-  "name": "rf-files-creator",
-  "displayName": "Robot Framework Files Creator",
-  "description": "Create Robot Framework test, resource, variables, and locators files with predefined templates",
+  "name": "robot-framework-toolkit",
+  "displayName": "Robot Framework Toolkit",
+  "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
   "version": "1.0.0",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
@@ -72,6 +72,26 @@
         "command": "rfFilesCreator.searchImports",
         "title": "Search Imports",
         "icon": "$(search)"
+      },
+      {
+        "command": "rfFilesCreator.clearSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "rfFilesCreator.expandAll",
+        "title": "Expand All",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "rfFilesCreator.collapseAll",
+        "title": "Collapse All",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "rfFilesCreator.viewFile",
+        "title": "View File",
+        "icon": "$(go-to-file)"
       }
     ],
     "views": {
@@ -92,19 +112,41 @@
           "group": "navigation@0"
         },
         {
-          "command": "rfFilesCreator.previewImports",
+          "command": "rfFilesCreator.clearSearch",
           "when": "view == rfImportSelector",
           "group": "navigation@1"
         },
         {
-          "command": "rfFilesCreator.confirmImports",
+          "command": "rfFilesCreator.expandAll",
           "when": "view == rfImportSelector",
           "group": "navigation@2"
         },
         {
-          "command": "rfFilesCreator.cancelImports",
+          "command": "rfFilesCreator.collapseAll",
           "when": "view == rfImportSelector",
           "group": "navigation@3"
+        },
+        {
+          "command": "rfFilesCreator.previewImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@4"
+        },
+        {
+          "command": "rfFilesCreator.confirmImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@5"
+        },
+        {
+          "command": "rfFilesCreator.cancelImports",
+          "when": "view == rfImportSelector",
+          "group": "navigation@6"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "rfFilesCreator.viewFile",
+          "when": "view == rfImportSelector && viewItem == file",
+          "group": "inline"
         }
       ],
       "explorer/context": [

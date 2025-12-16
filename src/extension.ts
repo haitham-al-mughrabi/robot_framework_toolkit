@@ -59,6 +59,9 @@ class ImportTreeItem extends vscode.TreeItem {
 
     updateAppearance() {
         if (this.isFile) {
+            // Set context value for context menu identification
+            this.contextValue = 'file';
+
             // Show checkbox based on whether an import type is selected
             this.checkboxState = this.selectedImportType
                 ? vscode.TreeItemCheckboxState.Checked
@@ -94,6 +97,7 @@ class ImportTreeItem extends vscode.TreeItem {
                 arguments: [this]
             };
         } else {
+            this.contextValue = 'folder';
             this.iconPath = new vscode.ThemeIcon('folder');
         }
     }
@@ -416,6 +420,10 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
         this._onDidChangeTreeData.fire(item);
     }
 
+    getRootItems(): ImportTreeItem[] {
+        return this.searchFilter ? this.filteredRootItems : this.rootItems;
+    }
+
     getSelectedItems(): ImportTreeItem[] {
         return this.allFileItems.filter(item => item.selectedImportType !== null);
     }
@@ -436,6 +444,30 @@ class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTreeItem> 
         }
         item.updateAppearance();
         this.refresh(item);
+    }
+}
+
+/**
+ * Recursively expand all tree items
+ */
+async function expandAllItems(treeView: vscode.TreeView<ImportTreeItem>, items: ImportTreeItem[]): Promise<void> {
+    for (const item of items) {
+        if (item.children && item.children.length > 0) {
+            await treeView.reveal(item, { expand: true, select: false, focus: false });
+            await expandAllItems(treeView, item.children);
+        }
+    }
+}
+
+/**
+ * Recursively collapse all tree items
+ */
+async function collapseAllItems(treeView: vscode.TreeView<ImportTreeItem>, items: ImportTreeItem[]): Promise<void> {
+    for (const item of items) {
+        if (item.children && item.children.length > 0) {
+            await collapseAllItems(treeView, item.children);
+            await treeView.reveal(item, { expand: false, select: false, focus: false });
+        }
     }
 }
 
@@ -576,6 +608,54 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    // Register command: Clear Search (revert search results)
+    const clearSearch = vscode.commands.registerCommand(
+        'rfFilesCreator.clearSearch',
+        () => {
+            if (currentTreeProvider) {
+                currentTreeProvider.setSearchFilter('');
+            }
+        }
+    );
+
+    // Register command: Expand All tree nodes
+    const expandAll = vscode.commands.registerCommand(
+        'rfFilesCreator.expandAll',
+        async () => {
+            if (currentTreeView && currentTreeProvider) {
+                const rootItems = currentTreeProvider.getRootItems();
+                await expandAllItems(currentTreeView, rootItems);
+            }
+        }
+    );
+
+    // Register command: Collapse All tree nodes
+    const collapseAll = vscode.commands.registerCommand(
+        'rfFilesCreator.collapseAll',
+        async () => {
+            if (currentTreeView && currentTreeProvider) {
+                const rootItems = currentTreeProvider.getRootItems();
+                await collapseAllItems(currentTreeView, rootItems);
+            }
+        }
+    );
+
+    // Register command: View File (open in editor)
+    const viewFile = vscode.commands.registerCommand(
+        'rfFilesCreator.viewFile',
+        async (item: ImportTreeItem) => {
+            if (item && item.isFile && item.filePath) {
+                try {
+                    const document = await vscode.workspace.openTextDocument(item.filePath);
+                    await vscode.window.showTextDocument(document, { preview: true, preserveFocus: true });
+                } catch (error) {
+                    const msg = error instanceof Error ? error.message : 'Unknown error';
+                    vscode.window.showErrorMessage(`Failed to open file: ${msg}`);
+                }
+            }
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
@@ -586,7 +666,11 @@ export function activate(context: vscode.ExtensionContext) {
         cancelImports,
         selectImportType,
         previewImports,
-        searchImports
+        searchImports,
+        clearSearch,
+        expandAll,
+        collapseAll,
+        viewFile
     );
 }
 
