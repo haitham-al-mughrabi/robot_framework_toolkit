@@ -86,6 +86,7 @@ Right-click on any folder in the Explorer to see the following options:
 - **Import Management**: Right-click on current imports to manage them:
   - *View File*: Open and view the imported file directly
   - *Delete Import*: Remove an import from the target file (with confirmation)
+  - *View Keywords*: Show keywords from the imported file and insert them into your current file
 - **View File**: Right-click on any file to view its content directly
 
 ## 📋 Requirements

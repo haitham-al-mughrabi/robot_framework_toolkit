@@ -2,7 +2,7 @@
   "name": "robot-framework-toolkit",
   "displayName": "Robot Framework Toolkit",
   "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
@@ -108,6 +108,11 @@
         "command": "rfFilesCreator.viewCurrentImport",
         "title": "View File",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "rfFilesCreator.viewKeywords",
+        "title": "View Keywords",
+        "icon": "$(symbol-method)"
       }
     ],
     "viewsContainers": {
@@ -123,7 +128,7 @@
       "rf-toolkit": [
         {
           "id": "rfImportSelector",
-          "name": "Import Selector",
+          "name": "Import Libraries & Resources",
           "icon": "$(checklist)"
         }
       ]
@@ -178,12 +183,22 @@
           "group": "inline"
         },
         {
+          "command": "rfFilesCreator.viewKeywords",
+          "when": "view == rfImportSelector && viewItem == file",
+          "group": "inline"
+        },
+        {
           "command": "rfFilesCreator.viewCurrentImport",
           "when": "view == rfImportSelector && viewItem == currentImport",
           "group": "inline"
         },
         {
           "command": "rfFilesCreator.deleteImport",
+          "when": "view == rfImportSelector && viewItem == currentImport",
+          "group": "inline"
+        },
+        {
+          "command": "rfFilesCreator.viewKeywords",
           "when": "view == rfImportSelector && viewItem == currentImport",
           "group": "inline"
         }
