@@ -7,6 +7,9 @@ import { ImportTreeItem } from './tree/items';
 let lockedTargetFile: string | undefined;
 let isTargetLocked: boolean = false;
 
+// Original target file (the file that opened the import tree - NEVER changes unless explicitly set)
+let originalTargetFile: string | undefined;
+
 // Global reference to tree view for title updates
 let currentTreeViewRef: vscode.TreeView<ImportTreeItem> | undefined;
 
@@ -18,12 +21,27 @@ export function setTreeViewRef(treeView: vscode.TreeView<ImportTreeItem> | undef
 }
 
 /**
- * Get the current target file (locked or active)
+ * Set the original target file (the file that opened the import tree)
+ * This is set once and only changes when a new file opens the tree
+ */
+export function setOriginalTargetFile(filePath: string | undefined): void {
+    originalTargetFile = filePath;
+}
+
+/**
+ * Get the current target file (locked > original)
+ * Returns the file that should be returned to when Go to Target is clicked
  */
 export function getTargetFile(): string | undefined {
+    // First priority: locked target
     if (isTargetLocked && lockedTargetFile) {
         return lockedTargetFile;
     }
+    // Second priority: original target (the file that opened the tree)
+    if (originalTargetFile) {
+        return originalTargetFile;
+    }
+    // Third priority: active editor if it's a robot file (fallback only)
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath)) {
         return activeEditor.document.uri.fsPath;

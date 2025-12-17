@@ -2,7 +2,7 @@
   "name": "robot-framework-toolkit",
   "displayName": "Robot Framework Toolkit",
   "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
@@ -142,7 +142,7 @@
         },
         {
           "command": "rfFilesCreator.goToTarget",
-          "when": "view == rfImportSelector && rfTargetLocked",
+          "when": "view == rfImportSelector",
           "group": "navigation@1"
         },
         {

@@ -17,7 +17,8 @@ import {
     lockTargetFile,
     getLockedTargetFile,
     isLocked,
-    setTreeViewRef
+    setTreeViewRef,
+    setOriginalTargetFile
 } from './target-manager';
 
 // Global references
@@ -103,6 +104,9 @@ export async function loadImportsForFile(filePath: string): Promise<void> {
 
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const targetDir = path.dirname(filePath);
+
+    // Set the original target file so Go to Target and Refresh work
+    setOriginalTargetFile(filePath);
 
     // Dispose the welcome tree view if it exists
     disposeWelcomeTreeView();
