@@ -501,6 +501,47 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         }
     );
 
+    // Register command: Select Keyword For Info Display
+    const selectKeywordForInfo = vscode.commands.registerCommand(
+        'rfFilesCreator.selectKeywordForInfo',
+        async (keywordInfo: any) => {
+            const currentTreeProvider = getCurrentTreeProvider();
+            if (currentTreeProvider) {
+                currentTreeProvider.setSelectedKeyword(keywordInfo);
+            }
+        }
+    );
+
+    // Register command: Insert Keyword From Info Section
+    const insertKeywordFromInfo = vscode.commands.registerCommand(
+        'rfFilesCreator.insertKeywordFromInfo',
+        async (keywordName: string) => {
+            const activeEditor = vscode.window.activeTextEditor;
+            if (!activeEditor) {
+                vscode.window.showErrorMessage('No active editor to insert keyword.');
+                return;
+            }
+
+            // Insert the keyword at the current cursor position
+            const position = activeEditor.selection.active;
+            await activeEditor.edit(editBuilder => {
+                editBuilder.insert(position, keywordName);
+            });
+
+            vscode.window.showInformationMessage(`Inserted keyword: ${keywordName}`);
+        }
+    );
+
+    // Register command: View Keyword Documentation
+    const viewKeywordDoc = vscode.commands.registerCommand(
+        'rfFilesCreator.viewKeywordDoc',
+        async (keywordName: string, docText: string) => {
+            // Show documentation in an information message
+            const doc = docText || 'No documentation available';
+            vscode.window.showInformationMessage(`${keywordName}:\n\n${doc}`);
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
@@ -522,6 +563,9 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         viewCurrentImport,
         viewKeywords,
         insertKeywordFromTree,
-        insertKeyword
+        insertKeyword,
+        selectKeywordForInfo,
+        insertKeywordFromInfo,
+        viewKeywordDoc
     );
 }

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ImportType, ExistingImport, ExtractedKeyword } from '../types';
+import { ImportType, ExistingImport, ExtractedKeyword, SelectedKeywordInfo } from '../types';
 import { ImportTreeItem, KeywordTreeItem } from './items';
 
 // Global state for pending changes - exported for use by other modules
@@ -22,6 +22,7 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
     private searchFilter: string = ''; // Store current search term
     private keywords: ExtractedKeyword[] = []; // Keywords to display
     private keywordsSourceFile: string = ''; // File the keywords came from
+    private selectedKeywordInfo: SelectedKeywordInfo | null = null; // Currently selected keyword info
 
     constructor(
         private allFiles: vscode.Uri[],
@@ -60,6 +61,26 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
         this._onDidChangeTreeData.fire();
     }
 
+    /**
+     * Set the selected keyword to display detailed information
+     */
+    public setSelectedKeyword(keywordInfo: SelectedKeywordInfo): void {
+        this.selectedKeywordInfo = keywordInfo;
+        this.buildTree();
+        // Refresh the tree view to display keyword info
+        this._onDidChangeTreeData.fire();
+    }
+
+    /**
+     * Clear the selected keyword information
+     */
+    public clearSelectedKeyword(): void {
+        this.selectedKeywordInfo = null;
+        this.buildTree();
+        // Refresh the tree view
+        this._onDidChangeTreeData.fire();
+    }
+
     private buildTree() {
         this.rootItems = [];
         this.allFileItems = [];
@@ -75,6 +96,10 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
         // Create Keywords section (if there are keywords)
         const keywordsSection = this.createKeywordsSection();
         if (keywordsSection) this.rootItems.push(keywordsSection);
+
+        // Create Keyword Information section (if a keyword is selected)
+        const keywordInfoSection = this.createKeywordInformationSection();
+        if (keywordInfoSection) this.rootItems.push(keywordInfoSection);
     }
 
     /**
@@ -151,15 +176,104 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
             keywordItem.iconPath = new vscode.ThemeIcon('symbol-method');
             keywordItem.contextValue = 'keyword';
 
-            // Set up command to insert keyword when clicked
+            // Set up command to select keyword and show info when clicked
             keywordItem.command = {
-                command: 'rfFilesCreator.insertKeywordFromTree',
-                title: 'Insert Keyword',
-                arguments: [keyword.name]
+                command: 'rfFilesCreator.selectKeywordForInfo',
+                title: 'View Keyword Info',
+                arguments: [{
+                    keyword: keyword,
+                    sourceFile: this.keywordsSourceFile,
+                    libraryName: path.basename(this.keywordsSourceFile)
+                }]
             };
 
             sectionItem.children.push(keywordItem);
         }
+
+        return sectionItem;
+    }
+
+    /**
+     * Create a section showing detailed information about a selected keyword
+     */
+    private createKeywordInformationSection(): ImportTreeItem | null {
+        if (!this.selectedKeywordInfo) return null;
+
+        const { keyword, sourceFile, libraryName } = this.selectedKeywordInfo;
+
+        const sectionItem = new ImportTreeItem(
+            `Keyword Info: ${keyword.name}`,
+            vscode.TreeItemCollapsibleState.Expanded
+        );
+        sectionItem.iconPath = new vscode.ThemeIcon('info');
+        sectionItem.contextValue = 'keywordInfoSection';
+
+        // Documentation item
+        const docItem = new ImportTreeItem(
+            `Documentation`,
+            vscode.TreeItemCollapsibleState.None,
+            { isFile: false }
+        );
+        docItem.description = keyword.doc || 'No description';
+        docItem.tooltip = keyword.doc || 'No documentation available';
+        docItem.iconPath = new vscode.ThemeIcon('comment');
+        docItem.contextValue = 'keywordInfo';
+        sectionItem.children.push(docItem);
+
+        // Arguments item
+        if (keyword.args.length > 0) {
+            const argsItem = new ImportTreeItem(
+                `Arguments`,
+                vscode.TreeItemCollapsibleState.None,
+                { isFile: false }
+            );
+            argsItem.description = `[${keyword.args.join(', ')}]`;
+            argsItem.iconPath = new vscode.ThemeIcon('symbol-parameter');
+            argsItem.contextValue = 'keywordInfo';
+            sectionItem.children.push(argsItem);
+        }
+
+        // Library/Resource item
+        const libItem = new ImportTreeItem(
+            `Source`,
+            vscode.TreeItemCollapsibleState.None,
+            { isFile: false }
+        );
+        libItem.description = libraryName;
+        libItem.tooltip = `File: ${sourceFile}`;
+        libItem.iconPath = new vscode.ThemeIcon('file-code');
+        libItem.contextValue = 'keywordInfo';
+        sectionItem.children.push(libItem);
+
+        // Insert button item
+        const insertItem = new ImportTreeItem(
+            `Insert Keyword`,
+            vscode.TreeItemCollapsibleState.None,
+            { isFile: false }
+        );
+        insertItem.iconPath = new vscode.ThemeIcon('arrow-right');
+        insertItem.command = {
+            command: 'rfFilesCreator.insertKeywordFromInfo',
+            title: 'Insert Keyword',
+            arguments: [keyword.name]
+        };
+        insertItem.contextValue = 'keywordInfo';
+        sectionItem.children.push(insertItem);
+
+        // View Doc button item
+        const viewDocItem = new ImportTreeItem(
+            `View Documentation`,
+            vscode.TreeItemCollapsibleState.None,
+            { isFile: false }
+        );
+        viewDocItem.iconPath = new vscode.ThemeIcon('open-preview');
+        viewDocItem.command = {
+            command: 'rfFilesCreator.viewKeywordDoc',
+            title: 'View Documentation',
+            arguments: [keyword.name, keyword.doc]
+        };
+        viewDocItem.contextValue = 'keywordInfo';
+        sectionItem.children.push(viewDocItem);
 
         return sectionItem;
     }

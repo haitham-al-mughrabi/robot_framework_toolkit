@@ -25,3 +25,10 @@ export interface ExtractedKeyword {
     args: string[];
     doc: string;
 }
+
+// Selected keyword with source information for display
+export interface SelectedKeywordInfo {
+    keyword: ExtractedKeyword;
+    sourceFile: string;
+    libraryName: string; // Library or resource file name
+}

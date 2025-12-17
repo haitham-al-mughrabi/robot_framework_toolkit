@@ -117,6 +117,18 @@
       {
         "command": "rfFilesCreator.insertKeywordFromTree",
         "title": "Insert Keyword"
+      },
+      {
+        "command": "rfFilesCreator.selectKeywordForInfo",
+        "title": "View Keyword Info"
+      },
+      {
+        "command": "rfFilesCreator.insertKeywordFromInfo",
+        "title": "Insert Keyword"
+      },
+      {
+        "command": "rfFilesCreator.viewKeywordDoc",
+        "title": "View Keyword Documentation"
       }
     ],
     "viewsContainers": {
