@@ -14,7 +14,8 @@ import {
     getTargetFile,
     lockTargetFile,
     getLockedTargetFile,
-    isLocked
+    isLocked,
+    getOriginalTargetFile
 } from './target-manager';
 import {
     getCurrentTreeView,
@@ -25,6 +26,7 @@ import {
     editRobotFileImports,
     createRobotFileWithImports
 } from './import-manager';
+import { addCurrentlyViewedFile } from './file-view-tracker';
 
 /**
  * Register all extension commands
@@ -220,6 +222,15 @@ export function registerCommands(context: vscode.ExtensionContext): void {
                 try {
                     const document = await vscode.workspace.openTextDocument(item.filePath);
                     await vscode.window.showTextDocument(document, { preview: true });
+                    // Explicitly add to currently viewed files since onDidChangeActiveTextEditor may not fire immediately
+                    addCurrentlyViewedFile(item.filePath);
+
+                    // Always ensure the target file is locked when viewing an importable file
+                    // Use the original target file (not the currently active one) to maintain the correct context
+                    const originalTargetFile = getOriginalTargetFile();
+                    if (originalTargetFile) {
+                        lockTargetFile(originalTargetFile);
+                    }
                 } catch (error) {
                     const msg = error instanceof Error ? error.message : 'Unknown error';
                     vscode.window.showErrorMessage(`Failed to open file: ${msg}`);
@@ -330,6 +341,14 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         'rfFilesCreator.viewCurrentImport',
         async (item: ImportTreeItem) => {
             if (item && item.contextValue === 'currentImport') {
+                // Auto-lock the current target file before viewing another file (if not already locked)
+                if (!isLocked()) {
+                    const targetFile = getTargetFile();
+                    if (targetFile) {
+                        lockTargetFile(targetFile);
+                    }
+                }
+
                 // Find the actual file path by searching in the workspace
                 const importPath = item.label as string;
                 let filePath: string | undefined;
@@ -370,11 +389,14 @@ export function registerCommands(context: vscode.ExtensionContext): void {
                     try {
                         const document = await vscode.workspace.openTextDocument(filePath);
                         await vscode.window.showTextDocument(document, { preview: true });
+                        // Explicitly add to currently viewed files since onDidChangeActiveTextEditor may not fire immediately
+                        addCurrentlyViewedFile(filePath);
 
-                        // Auto-lock the target if not already locked
-                        const targetFile = getTargetFile();
-                        if (targetFile && !isLocked()) {
-                            lockTargetFile(targetFile);
+                        // Always ensure the target file is locked when viewing an imported file
+                        // Use the original target file (not the currently active one) to maintain the correct context
+                        const originalTargetFile = getOriginalTargetFile();
+                        if (originalTargetFile) {
+                            lockTargetFile(originalTargetFile);
                         }
                     } catch (error) {
                         const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -442,10 +464,22 @@ export function registerCommands(context: vscode.ExtensionContext): void {
                         const currentTreeProvider = getCurrentTreeProvider();
                         if (currentTreeProvider) {
                             currentTreeProvider.setKeywords(keywords, filePath);
-                            vscode.window.showInformationMessage(`Showing ${keywords.length} keywords from ${path.basename(filePath)}`);
                         } else {
                             vscode.window.showWarningMessage('Import selector not available');
                         }
+
+                        // Show the file in the editor to trigger view tracking
+                        try {
+                            const document = await vscode.workspace.openTextDocument(filePath);
+                            await vscode.window.showTextDocument(document, { preview: true });
+                            // Explicitly add to currently viewed files since onDidChangeActiveTextEditor may not fire immediately
+                            addCurrentlyViewedFile(filePath);
+                        } catch (error) {
+                            const msg = error instanceof Error ? error.message : 'Unknown error';
+                            vscode.window.showWarningMessage(`Could not open file to display: ${msg}`);
+                        }
+
+                        vscode.window.showInformationMessage(`Showing ${keywords.length} keywords from ${path.basename(filePath)}`);
                     } else {
                         vscode.window.showInformationMessage(`No keywords found in ${path.basename(filePath)}`);
                     }

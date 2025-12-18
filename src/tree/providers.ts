@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ImportType, ExistingImport, ExtractedKeyword, SelectedKeywordInfo } from '../types';
 import { ImportTreeItem, KeywordTreeItem } from './items';
+import { isFileCurrentlyViewed } from '../file-view-tracker';
 
 // Global state for pending changes - exported for use by other modules
 export let hasPendingChanges: boolean = false;
@@ -81,12 +82,34 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
         this._onDidChangeTreeData.fire();
     }
 
+    /**
+     * Refresh the tree to update current file indicator without changing content
+     * This updates the indicator on file items without collapsing expanded folders
+     */
+    public refreshTreeIndicators(): void {
+        // Update only the file items' isCurrentlyViewed flag
+        for (const fileItem of this.allFileItems) {
+            const wasViewed = fileItem.isCurrentlyViewed;
+            const isCurrentlyViewed = fileItem.filePath ? isFileCurrentlyViewed(fileItem.filePath) : false;
+            fileItem.isCurrentlyViewed = isCurrentlyViewed;
+
+            // Only refresh items that changed state
+            if (wasViewed !== fileItem.isCurrentlyViewed) {
+                fileItem.updateAppearance();
+                this.refresh(fileItem);
+            }
+        }
+    }
+
     private buildTree() {
         this.rootItems = [];
         this.allFileItems = [];
 
+        // Get the currently active editor file path
+        const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+
         // Use all files for the unified tree (main section first)
-        const allFilesSection = this.createUnifiedFileTree(this.allFiles);
+        const allFilesSection = this.createUnifiedFileTree(this.allFiles, activeFilePath);
         if (allFilesSection) this.rootItems.push(allFilesSection);
 
         // Create Current Imports section below (if there are existing imports)
@@ -281,7 +304,7 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
     /**
      * Create a unified file tree with all file types combined
      */
-    private createUnifiedFileTree(files: vscode.Uri[]): ImportTreeItem | null {
+    private createUnifiedFileTree(files: vscode.Uri[], activeFilePath?: string): ImportTreeItem | null {
         if (files.length === 0) return null;
 
         // Helper to get paths
@@ -368,6 +391,9 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
             // Determine available import types based on file extension
             const availableImportTypes = getAvailableImportTypes(file);
 
+            // Check if this is the currently active file
+            const isCurrentlyViewed = isFileCurrentlyViewed(file.fsPath);
+
             // Add single file item with appropriate import type options
             const fileItem = new ImportTreeItem(
                 fileName,
@@ -380,14 +406,41 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
                     fileExtension: path.extname(file.fsPath),
                     selectedImportType: existingType,
                     availableImportTypes,
-                    isSuggested: suggested
+                    isSuggested: suggested,
+                    isCurrentlyViewed: isCurrentlyViewed || false
                 }
             );
             currentParent.children.push(fileItem);
             this.allFileItems.push(fileItem);
         }
 
+        // Sort folders and files alphabetically
+        this.sortTreeAlphabetically(sectionItem);
+
         return sectionItem;
+    }
+
+    /**
+     * Recursively sort all folders and files alphabetically
+     */
+    private sortTreeAlphabetically(item: ImportTreeItem): void {
+        if (item.children.length === 0) return;
+
+        // Separate folders from files
+        const folders = item.children.filter(child => !child.isFile);
+        const files = item.children.filter(child => child.isFile);
+
+        // Sort both alphabetically (case-insensitive)
+        folders.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+        files.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+        // Combine back: folders first, then files
+        item.children = [...folders, ...files];
+
+        // Recursively sort children in folders
+        for (const folder of folders) {
+            this.sortTreeAlphabetically(folder);
+        }
     }
 
     getTreeItem(element: ImportTreeItem): vscode.TreeItem {

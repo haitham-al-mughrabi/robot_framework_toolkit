@@ -20,6 +20,7 @@ import {
     setTreeViewRef,
     setOriginalTargetFile
 } from './target-manager';
+import { updateTreeViewIndicators, isFileCurrentlyViewed } from './file-view-tracker';
 
 // Global references
 let currentTreeView: vscode.TreeView<ImportTreeItem> | undefined;
@@ -42,6 +43,15 @@ export function getCurrentTreeView(): vscode.TreeView<ImportTreeItem> | undefine
  */
 export function getCurrentTreeProvider(): ImportTreeDataProvider | undefined {
     return currentTreeProvider;
+}
+
+/**
+ * Refresh the current tree to update indicators (like current file marker)
+ */
+export function refreshCurrentTreeIndicators(): void {
+    if (currentTreeProvider) {
+        currentTreeProvider.refreshTreeIndicators();
+    }
 }
 
 /**
@@ -174,6 +184,13 @@ export async function loadImportsForFile(filePath: string): Promise<void> {
                     state === vscode.TreeItemCheckboxState.Checked
                 );
             }
+        }
+    });
+
+    // Refresh indicators when tree view becomes visible
+    currentTreeView.onDidChangeVisibility(e => {
+        if (e.visible) {
+            refreshCurrentTreeIndicators();
         }
     });
 

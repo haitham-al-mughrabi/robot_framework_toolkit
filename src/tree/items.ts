@@ -12,6 +12,7 @@ export class ImportTreeItem extends vscode.TreeItem {
     selectedImportType: ImportType | null = null; // null = not selected
     availableImportTypes: ImportType[] = [];
     isSuggested: boolean = false;
+    isCurrentlyViewed: boolean = false; // Whether this file is currently open in editor
 
     constructor(
         public readonly label: string,
@@ -25,6 +26,7 @@ export class ImportTreeItem extends vscode.TreeItem {
             selectedImportType?: ImportType | null;
             availableImportTypes?: ImportType[];
             isSuggested?: boolean;
+            isCurrentlyViewed?: boolean;
         }
     ) {
         super(label, collapsibleState);
@@ -37,6 +39,7 @@ export class ImportTreeItem extends vscode.TreeItem {
             this.selectedImportType = options.selectedImportType ?? null;
             this.availableImportTypes = options.availableImportTypes || [];
             this.isSuggested = options.isSuggested ?? false;
+            this.isCurrentlyViewed = options.isCurrentlyViewed ?? false;
         }
 
         this.updateAppearance();
@@ -64,16 +67,24 @@ export class ImportTreeItem extends vscode.TreeItem {
             }
 
             // Show selected import type or available options
+            let description = '';
             if (this.selectedImportType) {
-                this.description = this.isSuggested
-                    ? `→ ${this.selectedImportType} $(star-full)`
-                    : `→ ${this.selectedImportType}`;
+                description = `→ ${this.selectedImportType}`;
             } else {
-                const baseDescription = `(${this.availableImportTypes.join(' | ')})`;
-                this.description = this.isSuggested
-                    ? `${baseDescription} $(star-full)`
-                    : baseDescription;
+                description = `(${this.availableImportTypes.join(' | ')})`;
             }
+
+            // Add suggested badge
+            if (this.isSuggested) {
+                description += ' $(star-full)';
+            }
+
+            // Add current file indicator
+            if (this.isCurrentlyViewed) {
+                description += ' ●';
+            }
+
+            this.description = description;
 
             // Make clickable to change import type
             this.command = {

@@ -88,6 +88,13 @@ export function isLocked(): boolean {
 }
 
 /**
+ * Get the original target file path (the file that opened the import tree)
+ */
+export function getOriginalTargetFile(): string | undefined {
+    return originalTargetFile;
+}
+
+/**
  * Get the locked target file path
  */
 export function getLockedTargetFile(): string | undefined {

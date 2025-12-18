@@ -10,9 +10,11 @@ import {
     loadImportsForFile,
     getCurrentTreeView,
     disposeCurrentTreeView,
-    disposeWelcomeTreeView
+    disposeWelcomeTreeView,
+    refreshCurrentTreeIndicators
 } from './import-manager';
 import { registerCommands } from './commands';
+import { initializeFileViewTracker } from './file-view-tracker';
 
 export function activate(context: vscode.ExtensionContext) {
     // Initialize the tree view - check if active file is a robot file
@@ -22,6 +24,9 @@ export function activate(context: vscode.ExtensionContext) {
     } else {
         initializeTreeView();
     }
+
+    // Initialize the file view tracker
+    initializeFileViewTracker(context);
 
     // Listen for active editor changes to update the tree view
     context.subscriptions.push(
@@ -35,13 +40,15 @@ export function activate(context: vscode.ExtensionContext) {
 
                     // Just update the editor focus to the target file without reloading the tree
                     // This maintains the pending selections in the tree view
+                    refreshCurrentTreeIndicators();
                     return;
                 }
 
                 // If locked and user switches to a different robot file, keep the current locked view
                 // (Don't change anything - maintain the locked target's imports)
                 if (isLocked() && getLockedTargetFile() && newFilePath !== getLockedTargetFile()) {
-                    // Do nothing - keep the current view for the locked target file
+                    // Refresh the tree to update the current file indicator
+                    refreshCurrentTreeIndicators();
                     return;
                 }
 
