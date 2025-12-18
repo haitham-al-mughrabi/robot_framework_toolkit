@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ImportTreeItem } from './tree/items';
 import { getCurrentTreeProvider } from './import-manager';
 
@@ -38,9 +39,14 @@ function updateCurrentlyViewedFiles(editor: vscode.TextEditor | undefined): void
     // Clear all currently viewed files
     currentlyViewedFiles.clear();
 
-    // Add the currently active editor if it exists
-    if (editor && editor.document && editor.document.uri && editor.document.uri.fsPath) {
-        currentlyViewedFiles.add(editor.document.uri.fsPath);
+    // Add all visible editors (handles split view)
+    const visibleEditors = vscode.window.visibleTextEditors;
+    for (const visibleEditor of visibleEditors) {
+        if (visibleEditor && visibleEditor.document && visibleEditor.document.uri && visibleEditor.document.uri.fsPath) {
+            // Normalize path for consistent tracking across platforms
+            const normalizedPath = path.normalize(visibleEditor.document.uri.fsPath);
+            currentlyViewedFiles.add(normalizedPath);
+        }
     }
 
     // Update tree view to reflect current state
@@ -51,7 +57,9 @@ function updateCurrentlyViewedFiles(editor: vscode.TextEditor | undefined): void
  * Check if a file path is currently being viewed
  */
 export function isFileCurrentlyViewed(filePath: string): boolean {
-    return currentlyViewedFiles.has(filePath);
+    // Normalize path for consistent platform handling
+    const normalizedPath = path.normalize(filePath);
+    return currentlyViewedFiles.has(normalizedPath);
 }
 
 /**

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ImportType } from './types';
+import { ImportType, SelectedKeywordInfo } from './types';
 import { ImportTreeItem, KeywordTreeItem } from './tree/items';
 import { expandAllItems, setHasPendingChanges } from './tree/providers';
 import { extractKeywordsFromFile } from './parsers';
@@ -358,29 +358,38 @@ export function registerCommands(context: vscode.ExtensionContext): void {
 
                 for (const file of allFiles) {
                     const fileName = path.basename(file.fsPath);
-                    if (fileName === importPath || file.fsPath.includes(importPath)) {
+                    if (fileName === importPath) {
                         filePath = file.fsPath;
                         break;
+                    }
+                    // Only match if importPath is a path component (not substring)
+                    // Normalize both paths for comparison
+                    const normalizedFilePath = path.normalize(file.fsPath).replace(/\\/g, '/');
+                    const normalizedImportPath = path.normalize(importPath).replace(/\\/g, '/');
+                    if (normalizedFilePath.endsWith(normalizedImportPath)) {
+                        const idx = normalizedFilePath.lastIndexOf(normalizedImportPath);
+                        if (idx >= 0) {
+                            const beforeMatch = normalizedFilePath.substring(0, idx);
+                            if (beforeMatch === '' || beforeMatch.endsWith('/')) {
+                                filePath = file.fsPath;
+                                break;
+                            }
+                        }
                     }
                 }
 
                 if (!filePath) {
                     // If we can't find the file exactly, try to construct a path relative to the workspace
                     const workspaceFolders = vscode.workspace.workspaceFolders;
-                    if (workspaceFolders) {
+                    if (workspaceFolders && workspaceFolders.length > 0) {
                         const workspaceRoot = workspaceFolders[0].uri.fsPath;
-                        const potentialPath = path.join(workspaceRoot, importPath);
+                        const normalizedImportPath = importPath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+                        const potentialPath = path.resolve(path.join(workspaceRoot, normalizedImportPath));
 
-                        // Check if the potential path exists
-                        if (fs.existsSync(potentialPath)) {
+                        // Security: Ensure resolved path is within workspace (prevent path traversal)
+                        const normalizedWorkspaceRoot = path.resolve(workspaceRoot);
+                        if (potentialPath.startsWith(normalizedWorkspaceRoot) && fs.existsSync(potentialPath)) {
                             filePath = potentialPath;
-                        } else {
-                            // Try with different combinations
-                            const normalizedImportPath = importPath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
-                            const otherPotentialPath = path.join(workspaceRoot, normalizedImportPath);
-                            if (fs.existsSync(otherPotentialPath)) {
-                                filePath = otherPotentialPath;
-                            }
                         }
                     }
                 }
@@ -429,27 +438,37 @@ export function registerCommands(context: vscode.ExtensionContext): void {
 
                     for (const file of allFiles) {
                         const fileName = path.basename(file.fsPath);
-                        if (fileName === importPath || file.fsPath.includes(importPath)) {
+                        if (fileName === importPath) {
                             filePath = file.fsPath;
                             break;
+                        }
+                        // Only match if importPath is a path component (not substring)
+                        const normalizedFilePath = path.normalize(file.fsPath).replace(/\\/g, '/');
+                        const normalizedImportPath = path.normalize(importPath).replace(/\\/g, '/');
+                        if (normalizedFilePath.endsWith(normalizedImportPath)) {
+                            const idx = normalizedFilePath.lastIndexOf(normalizedImportPath);
+                            if (idx >= 0) {
+                                const beforeMatch = normalizedFilePath.substring(0, idx);
+                                if (beforeMatch === '' || beforeMatch.endsWith('/')) {
+                                    filePath = file.fsPath;
+                                    break;
+                                }
+                            }
                         }
                     }
 
                     if (!filePath) {
                         // If we can't find the file exactly, try to construct a path relative to the workspace
                         const workspaceFolders = vscode.workspace.workspaceFolders;
-                        if (workspaceFolders) {
+                        if (workspaceFolders && workspaceFolders.length > 0) {
                             const workspaceRoot = workspaceFolders[0].uri.fsPath;
-                            const potentialPath = path.join(workspaceRoot, importPath);
+                            const normalizedImportPath = importPath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+                            const potentialPath = path.resolve(path.join(workspaceRoot, normalizedImportPath));
 
-                            if (fs.existsSync(potentialPath)) {
+                            // Security: Ensure resolved path is within workspace (prevent path traversal)
+                            const normalizedWorkspaceRoot = path.resolve(workspaceRoot);
+                            if (potentialPath.startsWith(normalizedWorkspaceRoot) && fs.existsSync(potentialPath)) {
                                 filePath = potentialPath;
-                            } else {
-                                const normalizedImportPath = importPath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
-                                const otherPotentialPath = path.join(workspaceRoot, normalizedImportPath);
-                                if (fs.existsSync(otherPotentialPath)) {
-                                    filePath = otherPotentialPath;
-                                }
                             }
                         }
                     }
@@ -526,7 +545,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     // Register command: Select Keyword For Info Display
     const selectKeywordForInfo = vscode.commands.registerCommand(
         'rfFilesCreator.selectKeywordForInfo',
-        async (keywordInfo: any) => {
+        async (keywordInfo: SelectedKeywordInfo) => {
             const currentTreeProvider = getCurrentTreeProvider();
             if (currentTreeProvider) {
                 currentTreeProvider.setSelectedKeyword(keywordInfo);

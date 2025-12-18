@@ -240,7 +240,17 @@ export async function createRobotFile(
         placeHolder: `my_${fileType}`,
         validateInput: (value) => {
             if (!value?.trim()) return 'File name cannot be empty';
-            if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+
+            // Check if user already included an extension and remove it for validation
+            let nameToValidate = value.trim();
+            const hasExtension = nameToValidate.endsWith('.robot') ||
+                                nameToValidate.endsWith('.resource') ||
+                                nameToValidate.endsWith('.py');
+            if (hasExtension) {
+                nameToValidate = nameToValidate.substring(0, nameToValidate.lastIndexOf('.'));
+            }
+
+            if (!/^[a-zA-Z0-9_-]+$/.test(nameToValidate)) {
                 return 'Only letters, numbers, underscore, hyphen allowed';
             }
             return null;
@@ -249,7 +259,13 @@ export async function createRobotFile(
 
     if (!fileName) return;
 
-    const fullFileName = fileName + extension;
+    // Remove extension if user already included it to prevent double extension
+    let cleanFileName = fileName.trim();
+    if (cleanFileName.endsWith('.robot') || cleanFileName.endsWith('.resource') || cleanFileName.endsWith('.py')) {
+        cleanFileName = cleanFileName.substring(0, cleanFileName.lastIndexOf('.'));
+    }
+
+    const fullFileName = cleanFileName + extension;
     const filePath = path.join(targetDir, fullFileName);
 
     if (fs.existsSync(filePath)) {

@@ -329,10 +329,38 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
             for (const imp of this.existingImports) {
                 const normalizedExisting = imp.path.replace(/\\/g, '/');
                 const normalizedNew = importPath.replace(/\\/g, '/');
-                if (normalizedExisting === normalizedNew ||
-                    normalizedExisting.endsWith(normalizedNew) ||
-                    normalizedNew.endsWith(normalizedExisting)) {
+
+                // Exact match
+                if (normalizedExisting === normalizedNew) {
                     return imp.type;
+                }
+
+                // Match if existing ends with the new path with proper path boundary
+                // e.g., "Libraries/file.py" ends with "file.py" OR "Libraries/file.py"
+                if (normalizedExisting.endsWith('/' + normalizedNew) ||
+                    normalizedExisting.endsWith(normalizedNew)) {
+                    // Additional check: ensure it's a proper path component match
+                    // Avoid false positives like "myfile.py" matching "file.py"
+                    const idx = normalizedExisting.lastIndexOf(normalizedNew);
+                    if (idx >= 0) {
+                        const beforeMatch = normalizedExisting.substring(0, idx);
+                        // Either at start, or preceded by a path separator
+                        if (beforeMatch === '' || beforeMatch.endsWith('/')) {
+                            return imp.type;
+                        }
+                    }
+                }
+
+                // Match if new ends with the existing path with proper path boundary
+                if (normalizedNew.endsWith('/' + normalizedExisting) ||
+                    normalizedNew.endsWith(normalizedExisting)) {
+                    const idx = normalizedNew.lastIndexOf(normalizedExisting);
+                    if (idx >= 0) {
+                        const beforeMatch = normalizedNew.substring(0, idx);
+                        if (beforeMatch === '' || beforeMatch.endsWith('/')) {
+                            return imp.type;
+                        }
+                    }
                 }
             }
             return null;
@@ -375,7 +403,8 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
             const absPath = getAbsolutePath(file.fsPath);
             const relativePath = getRelativePath(file.fsPath);
             const parts = absPath.split('/');
-            const fileName = parts.pop()!;
+            const fileName = parts.pop();
+            if (!fileName) continue; // Skip if we can't extract file name
 
             // Build folder hierarchy
             let currentParent = sectionItem;
@@ -532,6 +561,8 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
                 newItem.children = filteredChildren;
                 newItem.isFile = false;
                 newItem.iconPath = item.iconPath;
+                // Preserve context value for proper menu/context handling
+                newItem.contextValue = item.contextValue;
                 return newItem;
             }
             return null;
@@ -555,6 +586,12 @@ export class ImportTreeDataProvider implements vscode.TreeDataProvider<ImportTre
     }
 
     setImportType(item: ImportTreeItem, importType: ImportType | null): void {
+        // Validate import type is available or null
+        if (importType !== null && !item.availableImportTypes.includes(importType)) {
+            console.warn(`Invalid import type "${importType}" for file "${item.label}". Available types: ${item.availableImportTypes.join(', ')}`);
+            return;
+        }
+
         item.selectedImportType = importType;
         item.updateAppearance();
         this.refresh(item);

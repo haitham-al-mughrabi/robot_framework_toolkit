@@ -27,6 +27,7 @@ let currentTreeView: vscode.TreeView<ImportTreeItem> | undefined;
 let currentTreeProvider: ImportTreeDataProvider | undefined;
 let importSelectionResolver: ((confirmed: boolean) => void) | undefined;
 let welcomeTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
+let treeViewDisposables: vscode.Disposable[] = [];
 
 // Store pathType globally for generating settings
 let currentPathType: PathType = 'relative';
@@ -92,11 +93,20 @@ export function disposeWelcomeTreeView(): void {
  * Dispose the current tree view
  */
 export function disposeCurrentTreeView(): void {
+    // Dispose all event listener disposables
+    for (const disposable of treeViewDisposables) {
+        disposable.dispose();
+    }
+    treeViewDisposables = [];
+
     if (currentTreeView) {
         currentTreeView.dispose();
         currentTreeView = undefined;
         currentTreeProvider = undefined;
     }
+
+    // Clear resolver reference to prevent stale callback
+    importSelectionResolver = undefined;
 }
 
 /**
@@ -175,8 +185,8 @@ export async function loadImportsForFile(filePath: string): Promise<void> {
     // Update the target manager's tree view reference
     setTreeViewRef(currentTreeView);
 
-    // Handle checkbox changes
-    currentTreeView.onDidChangeCheckboxState(e => {
+    // Handle checkbox changes - STORE DISPOSABLE
+    const checkboxDisposable = currentTreeView.onDidChangeCheckboxState(e => {
         for (const [item, state] of e.items) {
             if (item.isFile) {
                 currentTreeProvider?.toggleSelection(
@@ -186,13 +196,18 @@ export async function loadImportsForFile(filePath: string): Promise<void> {
             }
         }
     });
+    // Store for cleanup
+    if (!treeViewDisposables) treeViewDisposables = [];
+    treeViewDisposables.push(checkboxDisposable);
 
-    // Refresh indicators when tree view becomes visible
-    currentTreeView.onDidChangeVisibility(e => {
+    // Refresh indicators when tree view becomes visible - STORE DISPOSABLE
+    const visibilityDisposable = currentTreeView.onDidChangeVisibility(e => {
         if (e.visible) {
             refreshCurrentTreeIndicators();
         }
     });
+    // Store for cleanup
+    treeViewDisposables.push(visibilityDisposable);
 
     // Set up resolver for confirm/cancel buttons
     importSelectionResolver = async (confirmed: boolean) => {
@@ -352,8 +367,8 @@ export async function showFileSelectionTreeView(
         // Update the target manager's tree view reference
         setTreeViewRef(currentTreeView);
 
-        // Handle checkbox changes (toggle selection)
-        currentTreeView.onDidChangeCheckboxState(e => {
+        // Handle checkbox changes (toggle selection) - STORE DISPOSABLE FOR CLEANUP
+        const checkboxDisposable = currentTreeView.onDidChangeCheckboxState(e => {
             for (const [item, state] of e.items) {
                 if (item.isFile) {
                     currentTreeProvider?.toggleSelection(
@@ -363,6 +378,9 @@ export async function showFileSelectionTreeView(
                 }
             }
         });
+        // Store for cleanup
+        if (!treeViewDisposables) treeViewDisposables = [];
+        treeViewDisposables.push(checkboxDisposable);
 
         // Show the tree view
         vscode.commands.executeCommand('rfImportSelector.focus');
@@ -372,6 +390,13 @@ export async function showFileSelectionTreeView(
             vscode.commands.executeCommand('setContext', 'rfImportSelectorVisible', false);
             vscode.commands.executeCommand('setContext', 'rfHasPendingChanges', false);
             vscode.commands.executeCommand('setContext', 'rfHasActiveSearch', false);
+
+            // Dispose all event listener disposables
+            for (const disposable of treeViewDisposables) {
+                disposable.dispose();
+            }
+            treeViewDisposables = [];
+
             currentTreeView?.dispose();
             currentTreeView = undefined;
             currentTreeProvider = undefined;
