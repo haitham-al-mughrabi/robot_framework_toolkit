@@ -290,8 +290,8 @@ function extractKeywordDecoratorName(content: string, methodIndex: number): stri
     const beforeMethod = content.substring(0, methodIndex);
     const lines = beforeMethod.split('\n');
 
-    // Check the last few lines before the method for @keyword decorator
-    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 5); i--) {
+    // Check the last several lines before the method for @keyword decorator (increased from 5 to 15)
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 15); i--) {
         const line = lines[i].trim();
 
         // Check for @keyword decorator with custom name: @keyword("Name") or @keyword('Name')
@@ -353,12 +353,14 @@ export function extractKeywordsFromPythonFile(content: string): ExtractedKeyword
             // Split parameters by comma, but be careful with nested structures
             const rawParams = paramsStr.split(',').map(p => p.trim());
             args = rawParams
-                .filter(p => p && p !== 'self' && !p.includes('=') && !p.includes('*')) // Exclude self, defaults, and *args/**kwargs
+                .filter(p => p && p !== 'self' && !p.includes('*')) // Exclude self and *args/**kwargs
                 .map(p => {
+                    // Remove default values (everything after =)
+                    const paramWithoutDefault = p.split('=')[0].trim();
                     // Extract just the parameter name, removing type hints like param: str -> param
-                    return p.split(':')[0].trim();
+                    return paramWithoutDefault.split(':')[0].trim();
                 })
-                .filter(p => p.startsWith('${') || p.startsWith('_') === false); // Keep valid RF-style args or regular Python args
+                .filter(p => p && !p.startsWith('_')); // Keep non-empty params that don't start with underscore
 
             // Convert Python-style args to RF-style if needed
             args = args.map(arg => arg.startsWith('${') ? arg : `\${${arg}}`);
