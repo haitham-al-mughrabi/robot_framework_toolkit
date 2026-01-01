@@ -11,6 +11,8 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.icons.AllIcons
+import com.intellij.ui.JBColor
+import com.intellij.ui.JBSplitter
 import com.intellij.ui.CheckedTreeNode
 import com.intellij.ui.CheckboxTreeListener
 import com.intellij.ui.ScrollPaneFactory
@@ -29,7 +31,8 @@ import javax.swing.tree.TreePath
 
 class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, true) {
 
-    private val importTree = ImportTree()
+    private val existingImportsTree = ImportTree()
+    private val availableFilesTree = ImportTree()
     private val statusLabel = JBLabel("Ready")
     private val searchField = SearchTextField()
     private var allFiles: List<com.intellij.openapi.vfs.VirtualFile> = emptyList()
@@ -183,10 +186,26 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         toolbarContainer.add(searchPanel)
         rootPanel.add(toolbarContainer, BorderLayout.NORTH)
         
-        // Import Tree
-        val treePanel = JPanel(BorderLayout())
-        treePanel.add(ScrollPaneFactory.createScrollPane(importTree), BorderLayout.CENTER)
-        rootPanel.add(treePanel, BorderLayout.CENTER)
+        // CATEGORIES: TREE PANELS with Splitter
+        val existingImportsPanel = JPanel(BorderLayout())
+        existingImportsPanel.add(JBLabel(" CURRENT IMPORTS").apply {
+            font = font.deriveFont(java.awt.Font.BOLD, 10f)
+            foreground = com.intellij.ui.JBColor.GRAY
+        }, BorderLayout.NORTH)
+        existingImportsPanel.add(ScrollPaneFactory.createScrollPane(existingImportsTree), BorderLayout.CENTER)
+
+        val availableFilesPanel = JPanel(BorderLayout())
+        availableFilesPanel.add(JBLabel(" AVAILABLE FOR IMPORT").apply {
+            font = font.deriveFont(java.awt.Font.BOLD, 10f)
+            foreground = com.intellij.ui.JBColor.GRAY
+        }, BorderLayout.NORTH)
+        availableFilesPanel.add(ScrollPaneFactory.createScrollPane(availableFilesTree), BorderLayout.CENTER)
+
+        val splitter = com.intellij.ui.JBSplitter(true, 0.3f)
+        splitter.firstComponent = existingImportsPanel
+        splitter.secondComponent = availableFilesPanel
+        
+        rootPanel.add(splitter, BorderLayout.CENTER)
         
         // Footer
         val footer = JBPanel<JBPanel<*>>(BorderLayout())
@@ -309,33 +328,31 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
 
     private fun setupTreeClickHandler() {
-        // Override the node check behavior to show import type dialog
-        importTree.addCheckboxTreeListener(object : CheckboxTreeListener {
+        val listener = object : CheckboxTreeListener {
             override fun nodeStateChanged(node: CheckedTreeNode) {
                 if (node is ImportNode && node.isFile) {
-                    // Save original state before modification
                     if (node.filePath != null && !originalSelections.containsKey(node.filePath)) {
                         originalSelections = originalSelections + (node.filePath to Pair(node.isChecked, node.selectedImportType))
                     }
-
-                    // If the node is being checked and has multiple import types, show dialog
                     if (node.isChecked && node.selectedImportType == null && node.availableImportTypes.isNotEmpty()) {
                         showImportTypeSelectionDialog(node)
                     }
-
                     hasPendingChanges = true
                     updateButtonStates()
                 }
             }
-        })
+        }
+        existingImportsTree.addCheckboxTreeListener(listener)
+        availableFilesTree.addCheckboxTreeListener(listener)
     }
     
     private fun showImportTypeSelectionDialog(node: ImportNode) {
+        val tree = if (availableFilesTree.rowCount > 0 && isNodeInTree(node, availableFilesTree)) availableFilesTree else existingImportsTree
+        
         if (node.availableImportTypes.size == 1) {
-            // Only one option, auto-select it
             node.selectedImportType = node.availableImportTypes[0]
             node.isChecked = true
-            importTree.repaint()
+            tree.repaint()
             updateButtonStates()
             return
         }
@@ -354,14 +371,25 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         if (selected != null) {
             node.selectedImportType = ImportType.valueOf(selected as String)
             node.isChecked = true
-            importTree.repaint()
+            tree.repaint()
             updateButtonStates()
         } else {
-            // User cancelled, uncheck the node
             node.isChecked = false
-            importTree.repaint()
+            tree.repaint()
             updateButtonStates()
         }
+    }
+
+    private fun isNodeInTree(node: CheckedTreeNode, tree: ImportTree): Boolean {
+        val root = tree.model.root as? CheckedTreeNode ?: return false
+        fun find(n: CheckedTreeNode): Boolean {
+            if (n === node) return true
+            for (i in 0 until n.childCount) {
+                if (find(n.getChildAt(i) as CheckedTreeNode)) return true
+            }
+            return false
+        }
+        return find(root)
     }
     
     private fun setupTreeContextMenu() {
@@ -369,9 +397,9 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
         val viewFileItem = JMenuItem("View File")
         viewFileItem.addActionListener {
-            val node = importTree.lastSelectedPathComponent as? ImportNode
+            val node = (existingImportsTree.lastSelectedPathComponent as? ImportNode)
+                ?: (availableFilesTree.lastSelectedPathComponent as? ImportNode)
             if (node?.isFile == true && node.filePath != null) {
-                // Auto-lock the current target file before viewing another file
                 if (!TargetFileManager.isLocked()) {
                     val targetFile = TargetFileManager.getTargetFile(project)
                     if (targetFile != null) {
@@ -387,62 +415,44 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                     statusLabel.text = "Opened: ${virtualFile.name}"
                 } else {
                     statusLabel.text = "Error: File not found at ${node.filePath}"
-                    JOptionPane.showMessageDialog(
-                        this,
-                        "File not found: ${node.filePath}",
-                        "Error",
-                        JOptionPane.ERROR_MESSAGE
-                    )
+                    JOptionPane.showMessageDialog(this, "File not found: ${node.filePath}", "Error", JOptionPane.ERROR_MESSAGE)
                 }
             } else {
-                statusLabel.text = "Error: Please select a file node"
-                JOptionPane.showMessageDialog(
-                    this,
-                    "Please right-click on a file (not a folder) to view it.",
-                    "Invalid Selection",
-                    JOptionPane.WARNING_MESSAGE
-                )
+                statusLabel.text = "Error: Please select a file"
+                JOptionPane.showMessageDialog(this, "Please select an actual file to view.", "Invalid Selection", JOptionPane.WARNING_MESSAGE)
             }
         }
         menu.add(viewFileItem)
 
         val viewKeywordsItem = JMenuItem("View Keywords")
         viewKeywordsItem.addActionListener {
-            val node = importTree.lastSelectedPathComponent as? ImportNode
+            val node = (existingImportsTree.lastSelectedPathComponent as? ImportNode)
+                ?: (availableFilesTree.lastSelectedPathComponent as? ImportNode)
             if (node?.isFile == true && node.filePath != null) {
                 try {
                     showKeywordsDialog(node.filePath)
                 } catch (e: Exception) {
                     statusLabel.text = "Error viewing keywords: ${e.message}"
-                    JOptionPane.showMessageDialog(
-                        this,
-                        "Error viewing keywords: ${e.message}",
-                        "Error",
-                        JOptionPane.ERROR_MESSAGE
-                    )
+                    JOptionPane.showMessageDialog(this, "Error viewing keywords: ${e.message}", "Error", JOptionPane.ERROR_MESSAGE)
                 }
             } else {
-                statusLabel.text = "Error: Please select a file node"
-                JOptionPane.showMessageDialog(
-                    this,
-                    "Please right-click on a file (not a folder) to view keywords.",
-                    "Invalid Selection",
-                    JOptionPane.WARNING_MESSAGE
-                )
+                statusLabel.text = "Error: Please select a file"
+                JOptionPane.showMessageDialog(this, "Please select an actual file to view keywords.", "Invalid Selection", JOptionPane.WARNING_MESSAGE)
             }
         }
         menu.add(viewKeywordsItem)
         
         val deleteImportItem = JMenuItem("Delete Import")
         deleteImportItem.addActionListener {
-            val node = importTree.lastSelectedPathComponent as? ImportNode
+            val node = existingImportsTree.lastSelectedPathComponent as? ImportNode
             if (node != null && existingImports.any { it.path == node.label }) {
                 deleteImport(node)
             }
         }
         menu.add(deleteImportItem)
         
-        importTree.componentPopupMenu = menu
+        existingImportsTree.componentPopupMenu = menu
+        availableFilesTree.componentPopupMenu = menu
     }
     
     private fun showKeywordsDialog(filePath: String) {
@@ -483,15 +493,13 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
     
     private fun expandAll() {
-        for (i in 0 until importTree.rowCount) {
-            importTree.expandRow(i)
-        }
+        for (i in 0 until existingImportsTree.rowCount) existingImportsTree.expandRow(i)
+        for (i in 0 until availableFilesTree.rowCount) availableFilesTree.expandRow(i)
     }
     
     private fun collapseAll() {
-        for (i in importTree.rowCount - 1 downTo 0) {
-            importTree.collapseRow(i)
-        }
+        for (i in existingImportsTree.rowCount - 1 downTo 0) existingImportsTree.collapseRow(i)
+        for (i in availableFilesTree.rowCount - 1 downTo 0) availableFilesTree.collapseRow(i)
     }
     
     private fun refreshTree() {
@@ -537,56 +545,50 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     
     private fun filterTree() {
         val query = searchField.text.lowercase()
-        val root = CheckedTreeNode("Root")
         val projectBaseDir = project.baseDir
-
-        // Update clear search button visibility
         updateButtonStates()
 
-        // Current Imports Section
-        if (existingImports.isNotEmpty()) {
-            val existingRoot = CheckedTreeNode("Current Imports (${existingImports.size})")
-            existingImports.forEach { imp ->
-                if (imp.path.lowercase().contains(query)) {
-                    val importType = when (imp.type.lowercase()) {
-                        "library" -> ImportType.Library
-                        "resource" -> ImportType.Resource
-                        "variables" -> ImportType.Variables
-                        else -> ImportType.Library
-                    }
-
-                    val node = ImportNode(
-                        label = imp.path,
-                        description = "",
-                        filePath = null,
-                        isFile = true,
-                        availableImportTypes = listOf(importType),
-                        selectedImportType = importType,
-                        icon = if (imp.type.equals("Library", ignoreCase = true)) AllIcons.Nodes.Class else AllIcons.FileTypes.Text
-                    )
-                    node.isChecked = true
-                    existingRoot.add(node)
+        // POPULATE EXISTING IMPORTS TREE
+        val existingRoot = CheckedTreeNode("Existing")
+        existingImports.forEach { imp ->
+            if (imp.path.lowercase().contains(query)) {
+                val importType = when (imp.type.lowercase()) {
+                    "library" -> ImportType.Library
+                    "resource" -> ImportType.Resource
+                    "variables" -> ImportType.Variables
+                    else -> ImportType.Library
                 }
+                val projectBaseDir = project.baseDir
+                val resolvedFile = projectBaseDir?.findFileByRelativePath(imp.path)
+                val absolutePath = resolvedFile?.path
+
+                val node = ImportNode(
+                    label = imp.path,
+                    filePath = absolutePath,
+                    availableImportTypes = listOf(importType),
+                    selectedImportType = importType,
+                    isFile = true,
+                    icon = if (imp.type.equals("Library", ignoreCase = true)) AllIcons.Nodes.Class else AllIcons.FileTypes.Text
+                )
+                node.isChecked = true
+                existingRoot.add(node)
             }
-            if (existingRoot.childCount > 0) root.add(existingRoot)
         }
+        existingImportsTree.updateTree(existingRoot)
 
-
-        // All Available Files Section with directory tree structure
+        // POPULATE AVAILABLE FILES TREE
+        val availableRoot = CheckedTreeNode("Available")
         val filteredFiles = allFiles.filter { file ->
             file.name.lowercase().contains(query) &&
-            file.path != currentTargetFile  // Don't show current file
+            file.path != currentTargetFile
         }
-
         if (filteredFiles.isNotEmpty()) {
-            val allFilesRoot = CheckedTreeNode("All Importable Files (${filteredFiles.size})")
-            buildDirectoryTree(filteredFiles, allFilesRoot, projectBaseDir)
-            root.add(allFilesRoot)
+            buildDirectoryTree(filteredFiles, availableRoot, projectBaseDir)
         }
+        availableFilesTree.updateTree(availableRoot)
 
-        importTree.updateTree(root)
         updateViewedFileIndicators()
-        statusLabel.text = "Found ${allFiles.size} importable files"
+        statusLabel.text = "Found ${allFiles.size} files, ${existingImports.size} imports"
     }
 
     /**
@@ -712,10 +714,14 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
     
     private fun updateViewedFileIndicators() {
-        // Update all nodes to reflect current view state
-        val root = importTree.model.root as? CheckedTreeNode ?: return
-        updateNodeViewState(root)
-        importTree.repaint()
+        val existingRoot = existingImportsTree.model.root as? CheckedTreeNode
+        val availableRoot = availableFilesTree.model.root as? CheckedTreeNode
+        
+        existingRoot?.let { updateNodeViewState(it) }
+        availableRoot?.let { updateNodeViewState(it) }
+        
+        existingImportsTree.repaint()
+        availableFilesTree.repaint()
     }
     
     private fun updateNodeViewState(node: CheckedTreeNode) {
@@ -776,11 +782,15 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
         
         val selectedNodes = mutableListOf<ImportNode>()
-        val root = importTree.model.root as CheckedTreeNode
+        val root = availableFilesTree.model.root as CheckedTreeNode
         
         fun collectChecked(node: CheckedTreeNode) {
             if (node is ImportNode && node.isChecked && node.isFile && node.selectedImportType != null) {
-                selectedNodes.add(node)
+                // Only add if NOT already in existingImports
+                val relativePath = getRelativePath(node)
+                if (existingImports.none { it.path == relativePath }) {
+                    selectedNodes.add(node)
+                }
             }
             for (i in 0 until node.childCount) {
                 collectChecked(node.getChildAt(i) as CheckedTreeNode)
@@ -789,21 +799,17 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         
         collectChecked(root)
         
-        val projectBaseDir = project.baseDir
         val imports = selectedNodes.mapNotNull { node ->
             val selectedType = node.selectedImportType
             if (node.filePath == null || selectedType == null) return@mapNotNull null
-            
-            val nodeFile = LocalFileSystem.getInstance().findFileByPath(node.filePath)
-            val path = if (projectBaseDir != null && nodeFile != null) {
-                VfsUtilCore.getRelativePath(nodeFile, projectBaseDir, '/') ?: node.label
-            } else {
-                node.label
-            }
-            
-            ExistingImport(selectedType.name, path)
+            ExistingImport(selectedType.name, getRelativePath(node))
         }
         
+        if (imports.isEmpty()) {
+            statusLabel.text = "No new imports selected"
+            return
+        }
+
         ImportManager.updateImports(project, virtualFile, imports)
         hasPendingChanges = false
         originalSelections = emptyMap()
@@ -827,9 +833,9 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
      * Cancel pending import changes and restore original selections
      */
     private fun cancelImports() {
-        val root = importTree.model.root as? CheckedTreeNode ?: return
+        val existingRoot = existingImportsTree.model.root as? CheckedTreeNode
+        val availableRoot = availableFilesTree.model.root as? CheckedTreeNode
 
-        // Restore original selections
         fun restoreSelections(node: CheckedTreeNode) {
             if (node is ImportNode && node.filePath != null) {
                 val original = originalSelections[node.filePath]
@@ -843,12 +849,22 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             }
         }
 
-        restoreSelections(root)
+        existingRoot?.let { restoreSelections(it) }
+        availableRoot?.let { restoreSelections(it) }
+        
         hasPendingChanges = false
         originalSelections = emptyMap()
-        importTree.repaint()
+        existingImportsTree.repaint()
+        availableFilesTree.repaint()
         updateButtonStates()
         statusLabel.text = "Changes cancelled"
+    }
+
+    private fun getRelativePath(node: ImportNode): String {
+        if (node.filePath == null) return node.label
+        val projectBaseDir = project.baseDir ?: return node.label
+        val nodeFile = LocalFileSystem.getInstance().findFileByPath(node.filePath) ?: return node.label
+        return VfsUtilCore.getRelativePath(nodeFile, projectBaseDir, '/') ?: node.label
     }
 
     /**
@@ -856,17 +872,20 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
      */
     private fun previewImports() {
         val selectedNodes = mutableListOf<ImportNode>()
-        val root = importTree.model.root as CheckedTreeNode
+        val root = availableFilesTree.model.root as CheckedTreeNode
 
         fun collectChecked(node: CheckedTreeNode) {
             if (node is ImportNode && node.isChecked && node.isFile && node.selectedImportType != null) {
-                selectedNodes.add(node)
+                val relativePath = getRelativePath(node)
+                if (existingImports.none { it.path == relativePath }) {
+                    selectedNodes.add(node)
+                }
             }
             for (i in 0 until node.childCount) {
                 collectChecked(node.getChildAt(i) as CheckedTreeNode)
             }
         }
-
+        
         collectChecked(root)
 
         if (selectedNodes.isEmpty()) {
@@ -879,18 +898,11 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             return
         }
 
-        val projectBaseDir = project.baseDir
         val previewText = buildString {
             append("*** Settings ***\n")
             selectedNodes.forEach { node ->
                 val selectedType = node.selectedImportType ?: return@forEach
-                val nodeFile = LocalFileSystem.getInstance().findFileByPath(node.filePath ?: return@forEach)
-                val path = if (projectBaseDir != null && nodeFile != null) {
-                    VfsUtilCore.getRelativePath(nodeFile, projectBaseDir, '/') ?: node.label
-                } else {
-                    node.label
-                }
-                append("${selectedType.name}    $path\n")
+                append("${selectedType.name}    ${getRelativePath(node)}\n")
             }
         }
 
