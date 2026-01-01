@@ -36,10 +36,6 @@ class ImportTree : CheckboxTree(
                             append("  (${value.availableImportTypes.joinToString(" | ")})")
                         }
                         
-                        // Add suggested indicator
-                        if (value.isSuggested) {
-                            append(" ⭐")
-                        }
                         
                         // Add currently viewed indicator
                         if (value.isCurrentlyViewed) {
@@ -75,7 +71,6 @@ class ImportNode(
     val isFile: Boolean = false,
     val availableImportTypes: List<ImportType> = emptyList(),
     var selectedImportType: ImportType? = null,
-    var isSuggested: Boolean = false,
     var isCurrentlyViewed: Boolean = false,
     val icon: Icon? = null
 ) : CheckedTreeNode(label)

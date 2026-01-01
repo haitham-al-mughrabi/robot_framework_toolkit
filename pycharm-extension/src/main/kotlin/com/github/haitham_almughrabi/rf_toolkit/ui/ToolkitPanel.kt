@@ -2,6 +2,7 @@ package com.github.haitham_almughrabi.rf_toolkit.ui
 
 import com.github.haitham_almughrabi.rf_toolkit.logic.*
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
@@ -16,6 +17,7 @@ import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
+import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -32,7 +34,6 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private val searchField = SearchTextField()
     private var allFiles: List<com.intellij.openapi.vfs.VirtualFile> = emptyList()
     private var existingImports: List<ExistingImport> = emptyList()
-    private var suggestedFiles: Set<String> = emptySet()
     private var currentTargetFile: String? = null
     private var hasPendingChanges: Boolean = false
     private var originalSelections: Map<String, Pair<Boolean, ImportType?>> = emptyMap()
@@ -44,6 +45,8 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private var cancelButton: JButton? = null
     private var confirmButton: JButton? = null
     private var clearSearchButton: JButton? = null
+    private val refreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, project)
+    private var currentDocumentListener: com.intellij.openapi.editor.event.DocumentListener? = null
     
     init {
         val rootPanel = JPanel(BorderLayout())
@@ -57,23 +60,30 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         titlePanel.add(titleLabel!!, BorderLayout.WEST)
         rootPanel.add(titlePanel, BorderLayout.NORTH)
 
-        // Toolbar - organized in two rows to ensure all buttons are visible
-        val toolbarContainer = JPanel(BorderLayout())
+        // Toolbar - organized in categories to ensure visibility
+        val toolbarContainer = JPanel()
+        toolbarContainer.layout = BoxLayout(toolbarContainer, BoxLayout.Y_AXIS)
 
-        // First row: File operations
-        val toolbar1 = JPanel(FlowLayout(FlowLayout.LEFT, 5, 2))
-
-        val refreshButton = JButton("Refresh")
+        // CATEGORY: TARGET
+        val targetCategory = JPanel(BorderLayout())
+        targetCategory.border = JBUI.Borders.empty(2, 0)
+        val targetHeader = JBLabel(" TARGET").apply { 
+            font = font.deriveFont(java.awt.Font.BOLD, 10f)
+            foreground = com.intellij.ui.JBColor.GRAY
+        }
+        targetCategory.add(targetHeader, BorderLayout.NORTH)
+        
+        val targetToolbar = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
+        val refreshButton = JButton(AllIcons.Actions.Refresh)
+        refreshButton.toolTipText = "Refresh"
         refreshButton.addActionListener { refreshTree() }
-        toolbar1.add(refreshButton)
+        targetToolbar.add(refreshButton)
 
         val goToTargetButton = JButton("Go to Target")
-        goToTargetButton.addActionListener {
-            TargetFileManager.goToTargetFile(project)
-        }
-        toolbar1.add(goToTargetButton)
+        goToTargetButton.addActionListener { TargetFileManager.goToTargetFile(project) }
+        targetToolbar.add(goToTargetButton)
 
-        lockButton = JButton("Lock Target")
+        lockButton = JButton("Lock")
         lockButton!!.addActionListener {
             val targetFile = TargetFileManager.getTargetFile(project)
             if (targetFile != null) {
@@ -81,9 +91,10 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                 updateTitle()
                 updateButtonStates()
                 statusLabel.text = "Target file locked"
+                setupAutoRefresh(targetFile)
             }
         }
-        toolbar1.add(lockButton!!)
+        targetToolbar.add(lockButton!!)
 
         unlockButton = JButton("Unlock")
         unlockButton!!.addActionListener {
@@ -91,39 +102,59 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             updateTitle()
             updateButtonStates()
             statusLabel.text = "Target file unlocked"
+            setupAutoRefresh(null)
         }
-        toolbar1.add(unlockButton!!)
-        unlockButton!!.isVisible = false  // Initially hidden
+        targetToolbar.add(unlockButton!!)
+        unlockButton!!.isVisible = false
+        targetCategory.add(targetToolbar, BorderLayout.CENTER)
+        toolbarContainer.add(targetCategory)
 
-        val expandAllButton = JButton("Expand All")
+        // CATEGORY: VIEW
+        val viewCategory = JPanel(BorderLayout())
+        viewCategory.border = JBUI.Borders.empty(2, 0)
+        val viewHeader = JBLabel(" VIEW").apply { 
+            font = font.deriveFont(java.awt.Font.BOLD, 10f)
+            foreground = com.intellij.ui.JBColor.GRAY
+        }
+        viewCategory.add(viewHeader, BorderLayout.NORTH)
+        
+        val viewToolbar = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
+        val expandAllButton = JButton(AllIcons.Actions.Expandall)
+        expandAllButton.toolTipText = "Expand All"
         expandAllButton.addActionListener { expandAll() }
-        toolbar1.add(expandAllButton)
+        viewToolbar.add(expandAllButton)
 
-        val collapseAllButton = JButton("Collapse All")
+        val collapseAllButton = JButton(AllIcons.Actions.Collapseall)
+        collapseAllButton.toolTipText = "Collapse All"
         collapseAllButton.addActionListener { collapseAll() }
-        toolbar1.add(collapseAllButton)
+        viewToolbar.add(collapseAllButton)
+        viewCategory.add(viewToolbar, BorderLayout.CENTER)
+        toolbarContainer.add(viewCategory)
 
-        // Second row: Import operations
-        val toolbar2 = JPanel(FlowLayout(FlowLayout.LEFT, 5, 2))
+        // CATEGORY: ACTIONS
+        val actionsCategory = JPanel(BorderLayout())
+        actionsCategory.border = JBUI.Borders.empty(2, 0)
+        val actionsHeader = JBLabel(" ACTIONS").apply { 
+            font = font.deriveFont(java.awt.Font.BOLD, 10f)
+            foreground = com.intellij.ui.JBColor.GRAY
+        }
+        actionsCategory.add(actionsHeader, BorderLayout.NORTH)
 
+        val actionsToolbar = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
         val previewButton = JButton("Preview")
         previewButton.addActionListener { previewImports() }
-        toolbar2.add(previewButton)
+        actionsToolbar.add(previewButton)
 
         confirmButton = JButton("Apply Imports")
         confirmButton!!.addActionListener { applyImports() }
-        toolbar2.add(confirmButton!!)
+        actionsToolbar.add(confirmButton!!)
 
         cancelButton = JButton("Cancel")
         cancelButton!!.addActionListener { cancelImports() }
-        toolbar2.add(cancelButton!!)
-        cancelButton!!.isVisible = false  // Initially hidden
-
-        // Combine toolbars
-        val toolbarsPanel = JPanel(BorderLayout())
-        toolbarsPanel.add(toolbar1, BorderLayout.NORTH)
-        toolbarsPanel.add(toolbar2, BorderLayout.CENTER)
-        toolbarContainer.add(toolbarsPanel, BorderLayout.CENTER)
+        actionsToolbar.add(cancelButton!!)
+        cancelButton!!.isVisible = false
+        actionsCategory.add(actionsToolbar, BorderLayout.CENTER)
+        toolbarContainer.add(actionsCategory)
 
         // Search field with clear button
         val searchPanel = JPanel(BorderLayout())
@@ -134,13 +165,14 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             override fun changedUpdate(e: DocumentEvent?) = filterTree()
         })
 
-        clearSearchButton = JButton("Clear")
+        clearSearchButton = JButton(AllIcons.Actions.Cancel)
+        clearSearchButton!!.toolTipText = "Clear Search"
         clearSearchButton!!.addActionListener {
             searchField.text = ""
             filterTree()
             updateButtonStates()
         }
-        clearSearchButton!!.isVisible = false  // Initially hidden
+        clearSearchButton!!.isVisible = false
 
         val searchInputPanel = JPanel(BorderLayout())
         searchInputPanel.add(JBLabel("Search: "), BorderLayout.WEST)
@@ -148,7 +180,7 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         searchInputPanel.add(clearSearchButton!!, BorderLayout.EAST)
         searchPanel.add(searchInputPanel, BorderLayout.CENTER)
 
-        toolbarContainer.add(searchPanel, BorderLayout.SOUTH)
+        toolbarContainer.add(searchPanel)
         rootPanel.add(toolbarContainer, BorderLayout.NORTH)
         
         // Import Tree
@@ -181,6 +213,7 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
         // Initial load for current file
         refreshTree()
+        currentTargetFile?.let { setupAutoRefresh(it) }
     }
     
     /**
@@ -228,6 +261,7 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                             TargetFileManager.setOriginalTargetFile(newFilePath)
                             refreshTree()
                             statusLabel.text = "Loaded imports for ${newFile.name}"
+                            setupAutoRefresh(newFilePath)
                         }
                     }
                 }
@@ -241,6 +275,37 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private fun isRobotFrameworkFile(filePath: String): Boolean {
         return filePath.endsWith(".robot", ignoreCase = true) ||
                filePath.endsWith(".resource", ignoreCase = true)
+    }
+
+    /**
+     * Set up auto-refresh for the specified file
+     */
+    private fun setupAutoRefresh(filePath: String?) {
+        // Remove existing listener if any
+        currentDocumentListener?.let {
+            com.intellij.openapi.editor.EditorFactory.getInstance().eventMulticaster.removeDocumentListener(it)
+        }
+        currentDocumentListener = null
+
+        if (filePath == null) return
+
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return
+        val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
+
+        val listener = object : com.intellij.openapi.editor.event.DocumentListener {
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
+                // Debounce refresh
+                refreshAlarm.cancelAllRequests()
+                refreshAlarm.addRequest({
+                    if (!hasPendingChanges) {
+                        refreshTree()
+                    }
+                }, 1000) // 1 second debounce
+            }
+        }
+        
+        com.intellij.openapi.editor.EditorFactory.getInstance().eventMulticaster.addDocumentListener(listener, project)
+        currentDocumentListener = listener
     }
 
     private fun setupTreeClickHandler() {
@@ -446,11 +511,16 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         // Use the current target file if set, otherwise fall back to active editor
         currentTargetFile = currentTargetFile ?: activeFilePath
 
-        // Parse existing imports from the target file (not necessarily the active editor)
+        // Parse existing imports from the target file
         existingImports = if (currentTargetFile != null) {
-            val targetFile = File(currentTargetFile!!)
-            if (targetFile.exists()) {
-                val content = targetFile.readText()
+            val virtualFile = LocalFileSystem.getInstance().findFileByPath(currentTargetFile!!)
+            val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+            val content = document?.text ?: run {
+                val targetFile = File(currentTargetFile!!)
+                if (targetFile.exists()) targetFile.readText() else ""
+            }
+            
+            if (content.isNotEmpty()) {
                 ToolkitParser.parseExistingImports(content)
             } else {
                 emptyList()
@@ -461,32 +531,6 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             emptyList()
         }
 
-        // Get import suggestions based on target file content
-        if (currentTargetFile != null) {
-            val targetFile = File(currentTargetFile!!)
-            if (targetFile.exists()) {
-                val content = targetFile.readText()
-                val pyFiles = allFiles.filter { it.name.endsWith(".py") }
-                val resourceFiles = allFiles.filter {
-                    it.name.endsWith(".robot") || it.name.endsWith(".resource")
-                }
-                suggestedFiles = ImportSuggester.suggestImports(
-                    content,
-                    pyFiles,
-                    resourceFiles
-                )
-            }
-        } else if (editor != null) {
-            val pyFiles = allFiles.filter { it.name.endsWith(".py") }
-            val resourceFiles = allFiles.filter {
-                it.name.endsWith(".robot") || it.name.endsWith(".resource")
-            }
-            suggestedFiles = ImportSuggester.suggestImports(
-                editor.document.text,
-                pyFiles,
-                resourceFiles
-            )
-        }
 
         filterTree()
     }
@@ -527,20 +571,6 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             if (existingRoot.childCount > 0) root.add(existingRoot)
         }
 
-        // Suggested Files Section (if any)
-        val suggestedFilesList = allFiles.filter { file ->
-            suggestedFiles.contains(file.path) && file.name.lowercase().contains(query)
-        }
-
-        if (suggestedFilesList.isNotEmpty()) {
-            val suggestedRoot = CheckedTreeNode("Suggested Files ⭐ (${suggestedFilesList.size})")
-            suggestedFilesList.forEach { file ->
-                val availableTypes = getAvailableImportTypes(file)
-                val node = createFileNode(file, projectBaseDir, availableTypes)
-                suggestedRoot.add(node)
-            }
-            root.add(suggestedRoot)
-        }
 
         // All Available Files Section with directory tree structure
         val filteredFiles = allFiles.filter { file ->
@@ -673,7 +703,6 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             isFile = true,
             availableImportTypes = availableTypes,
             selectedImportType = if (alreadyImported) availableTypes[0] else null,
-            isSuggested = suggestedFiles.contains(file.path),
             isCurrentlyViewed = FileViewTracker.isFileCurrentlyViewed(file.path),
             icon = icon
         )
