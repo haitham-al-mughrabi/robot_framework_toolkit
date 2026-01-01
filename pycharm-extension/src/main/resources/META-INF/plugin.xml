@@ -1,0 +1,53 @@
+<idea-plugin>
+    <id>com.github.haitham-almughrabi.robot-framework-toolkit</id>
+    <name>Robot Framework Toolkit</name>
+    <vendor email="haitham.almughrabi@example.com" url="https://github.com/haitham-almughrabi">Haitham Al-Mughrabi</vendor>
+
+    <description><![CDATA[
+    Create and manage Robot Framework test, resource, variables, and locators files with smart import management.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.python</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Add extensions here -->
+        <toolWindow id="Robot Framework Toolkit" 
+                    anchor="right" 
+                    factoryClass="com.github.haitham_almughrabi.rf_toolkit.ui.ToolkitToolWindowFactory" 
+                    icon="AllIcons.General.Modified"/>
+    </extensions>
+
+    <actions>
+        <group id="RobotFrameworkToolkit.ExplorerGroup" text="Robot Framework Toolkit" popup="true">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="NewGroup"/>
+            
+            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotTestFileAction"
+                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotTestFileAction"
+                    text="Create Robot Framework Test File"
+                    description="Create a new .robot file with test cases section"/>
+
+            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotResourceFileAction"
+                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotResourceFileAction"
+                    text="Create Robot Framework Resource File"
+                    description="Create a new .resource file with keywords section"/>
+
+            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotVariablesFileAction"
+                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotVariablesFileAction"
+                    text="Create Robot Framework Variables File"
+                    description="Create a new .resource file with variables section"/>
+
+            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotLocatorsFileAction"
+                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotLocatorsFileAction"
+                    text="Create Robot Framework Locators File"
+                    description="Create a new .py file for locators"/>
+                    
+            <separator/>
+            
+            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.EditRobotImportsAction"
+                    class="com.github.haitham_almughrabi.rf_toolkit.actions.EditRobotImportsAction"
+                    text="Edit Robot Framework Imports"
+                    description="Manage Library, Resource, and Variables imports"/>
+        </group>
+    </actions>
+</idea-plugin>
