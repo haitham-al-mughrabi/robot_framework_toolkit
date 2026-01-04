@@ -11,6 +11,9 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.ui.JBColor
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.CheckedTreeNode
@@ -77,38 +80,53 @@ class ToolkitPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         targetCategory.add(targetHeader, BorderLayout.NORTH)
         
         val targetToolbar = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
-        val refreshButton = JButton(AllIcons.Actions.Refresh)
-        refreshButton.toolTipText = "Refresh"
-        refreshButton.addActionListener { refreshTree() }
+        
+        val newFileButton = JButton(AllIcons.General.Add).apply {
+            toolTipText = "New Robot Framework File"
+            addActionListener {
+                val action = ActionManager.getInstance().getAction("com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotFileAction")
+                action?.actionPerformed(AnActionEvent.createFromAnAction(action, null, "ToolkitPanel", DataContext.EMPTY_CONTEXT))
+            }
+        }
+        targetToolbar.add(newFileButton)
+
+        val refreshButton = JButton(AllIcons.Actions.Refresh).apply {
+            toolTipText = "Refresh"
+            addActionListener { refreshTree() }
+        }
         targetToolbar.add(refreshButton)
 
-        val goToTargetButton = JButton("Go to Target")
-        goToTargetButton.addActionListener { TargetFileManager.goToTargetFile(project) }
+        val goToTargetButton = JButton("Go to Target").apply {
+            addActionListener { TargetFileManager.goToTargetFile(project) }
+        }
         targetToolbar.add(goToTargetButton)
 
-        lockButton = JButton("Lock")
-        lockButton!!.addActionListener {
-            val targetFile = TargetFileManager.getTargetFile(project)
-            if (targetFile != null) {
-                TargetFileManager.lockTargetFile(targetFile)
-                updateTitle()
-                updateButtonStates()
-                statusLabel.text = "Target file locked"
-                setupAutoRefresh(targetFile)
+        lockButton = JButton("Lock").apply {
+            addActionListener {
+                val targetFile = TargetFileManager.getTargetFile(project)
+                if (targetFile != null) {
+                    TargetFileManager.lockTargetFile(targetFile)
+                    updateTitle()
+                    updateButtonStates()
+                    statusLabel.text = "Target file locked"
+                    setupAutoRefresh(targetFile)
+                }
             }
         }
         targetToolbar.add(lockButton!!)
 
-        unlockButton = JButton("Unlock")
-        unlockButton!!.addActionListener {
-            TargetFileManager.unlockTargetFile()
-            updateTitle()
-            updateButtonStates()
-            statusLabel.text = "Target file unlocked"
-            setupAutoRefresh(null)
+        unlockButton = JButton("Unlock").apply {
+            addActionListener {
+                TargetFileManager.unlockTargetFile()
+                updateTitle()
+                updateButtonStates()
+                statusLabel.text = "Target file unlocked"
+                setupAutoRefresh(null)
+            }
+            isVisible = false
         }
         targetToolbar.add(unlockButton!!)
-        unlockButton!!.isVisible = false
+        
         targetCategory.add(targetToolbar, BorderLayout.CENTER)
         toolbarContainer.add(targetCategory)
 

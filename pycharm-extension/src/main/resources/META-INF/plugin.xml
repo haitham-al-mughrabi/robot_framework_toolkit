@@ -22,25 +22,12 @@
         <group id="RobotFrameworkToolkit.ExplorerGroup" text="Robot Framework Toolkit" popup="true">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="NewGroup"/>
             
-            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotTestFileAction"
-                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotTestFileAction"
-                    text="Create Robot Framework Test File"
-                    description="Create a new .robot file with test cases section"/>
-
-            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotResourceFileAction"
-                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotResourceFileAction"
-                    text="Create Robot Framework Resource File"
-                    description="Create a new .resource file with keywords section"/>
-
-            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotVariablesFileAction"
-                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotVariablesFileAction"
-                    text="Create Robot Framework Variables File"
-                    description="Create a new .resource file with variables section"/>
-
-            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotLocatorsFileAction"
-                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotLocatorsFileAction"
-                    text="Create Robot Framework Locators File"
-                    description="Create a new .py file for locators"/>
+            <action id="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotFileAction"
+                    class="com.github.haitham_almughrabi.rf_toolkit.actions.CreateRobotFileAction"
+                    text="New Robot Framework File..."
+                    description="Create a new Robot Framework test, resource, or variables file">
+                <add-to-group group-id="NewGroup" anchor="before" relative-to-action="NewFile"/>
+            </action>
                     
             <separator/>
             
