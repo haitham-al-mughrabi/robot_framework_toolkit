@@ -143,6 +143,7 @@
     "views": {
       "rf-toolkit": [
         {
+          "type": "webview",
           "id": "rfImportSelector",
           "name": "Import Libraries & Resources",
           "icon": "$(checklist)"

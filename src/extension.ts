@@ -15,56 +15,45 @@ import {
 } from './import-manager';
 import { registerCommands } from './commands';
 import { initializeFileViewTracker } from './file-view-tracker';
+import { ImportWebviewProvider } from './webview/ImportWebviewProvider';
+
+let webviewProvider: ImportWebviewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-    // Initialize the tree view - check if active file is a robot file
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath)) {
-        loadImportsForFile(activeEditor.document.uri.fsPath);
-    } else {
-        initializeTreeView();
-    }
+    // Register webview provider
+    webviewProvider = new ImportWebviewProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            ImportWebviewProvider.viewType,
+            webviewProvider
+        )
+    );
 
     // Initialize the file view tracker
     initializeFileViewTracker(context);
 
-    // Listen for active editor changes to update the tree view
+    // Listen for active editor changes to update the webview
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor && isRobotFrameworkFile(editor.document.uri.fsPath)) {
                 const newFilePath = editor.document.uri.fsPath;
 
-                // If locked and user returns to the target file, auto-unlock but preserve selections
-                if (isLocked() && getLockedTargetFile() && newFilePath === getLockedTargetFile()) {
-                    unlockTargetFile();
-
-                    // Just update the editor focus to the target file without reloading the tree
-                    // This maintains the pending selections in the tree view
-                    refreshCurrentTreeIndicators();
-                    return;
+                // If locked, don't update the target file
+                if (!isLocked() && webviewProvider) {
+                    webviewProvider.updateTargetFile(newFilePath);
                 }
-
-                // If locked and user switches to a different robot file, keep the current locked view
-                // (Don't change anything - maintain the locked target's imports)
-                if (isLocked() && getLockedTargetFile() && newFilePath !== getLockedTargetFile()) {
-                    // Refresh the tree to update the current file indicator
-                    refreshCurrentTreeIndicators();
-                    return;
-                }
-
-                // If not locked, handle normally
-                if (!isLocked()) {
-                    disposeCurrentTreeView();
-                    disposeWelcomeTreeView();
-                    loadImportsForFile(newFilePath);
-                }
-            } else if (!isLocked() && !getCurrentTreeView()) {
-                // Show welcome view if no robot file is open and not locked
-                disposeWelcomeTreeView();
-                initializeTreeView();
+            } else if (!isLocked() && webviewProvider) {
+                // Clear target file if non-robot file is active
+                webviewProvider.updateTargetFile(null);
             }
         })
     );
+
+    // Initialize webview with current file if it's a robot file
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && isRobotFrameworkFile(activeEditor.document.uri.fsPath) && webviewProvider) {
+        webviewProvider.updateTargetFile(activeEditor.document.uri.fsPath);
+    }
 
     // Register all commands
     registerCommands(context);
