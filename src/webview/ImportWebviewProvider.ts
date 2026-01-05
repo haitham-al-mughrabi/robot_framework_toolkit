@@ -316,8 +316,9 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
             return;
         }
 
+        // Arguments already come with ${} wrapping from the parser, so use them as-is
         const keywordCall = keyword.args.length > 0
-            ? `${keyword.name}    ${keyword.args.map((arg: string) => `\${${arg}}`).join('    ')}`
+            ? `${keyword.name}    ${keyword.args.join('    ')}`
             : keyword.name;
 
         await editor.edit(editBuilder => {
