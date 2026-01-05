@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ImportTreeItem } from './tree/items';
-import { getCurrentTreeProvider } from './import-manager';
 
 // Keep track of currently visible files
 let currentlyViewedFiles: Set<string> = new Set<string>();
@@ -48,9 +46,6 @@ function updateCurrentlyViewedFiles(editor: vscode.TextEditor | undefined): void
             currentlyViewedFiles.add(normalizedPath);
         }
     }
-
-    // Update tree view to reflect current state
-    updateTreeViewIndicators();
 }
 
 /**
@@ -70,23 +65,11 @@ export function getCurrentlyViewedFiles(): Set<string> {
 }
 
 /**
- * Update the tree view to show which files are currently being viewed
- */
-export function updateTreeViewIndicators(): void {
-    const treeProvider = getCurrentTreeProvider();
-    if (treeProvider) {
-        // Refresh the tree to update the UI indicators
-        treeProvider.refreshTreeIndicators();
-    }
-}
-
-/**
  * Manually add a file to the currently viewed tracking
  * This is useful when programmatically opening files
  */
 export function addCurrentlyViewedFile(filePath: string): void {
     currentlyViewedFiles.add(filePath);
-    updateTreeViewIndicators();
 }
 
 /**
@@ -94,5 +77,4 @@ export function addCurrentlyViewedFile(filePath: string): void {
  */
 export function removeCurrentlyViewedFile(filePath: string): void {
     currentlyViewedFiles.delete(filePath);
-    updateTreeViewIndicators();
 }

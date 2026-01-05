@@ -226,6 +226,44 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
             padding: 4px 6px;
         }
 
+        /* Folder Styling */
+        .folder-item {
+            margin-bottom: 4px;
+        }
+
+        .folder-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            user-select: none;
+        }
+
+        .folder-header:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .toggle-icon {
+            font-size: 10px;
+            width: 12px;
+            display: inline-block;
+        }
+
+        .folder-icon {
+            font-size: 14px;
+        }
+
+        .folder-content {
+            padding-left: 20px;
+            margin-top: 4px;
+        }
+
+        .folder-content.collapsed {
+            display: none;
+        }
+
         /* Tabs */
         .tabs {
             display: flex;
@@ -463,6 +501,11 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
                     <input type="search" id="searchInput" placeholder="Search files..." />
                 </div>
 
+                <div class="btn-group mb-2">
+                    <button id="expandAllBtn" class="secondary">Expand All</button>
+                    <button id="collapseAllBtn" class="secondary">Collapse All</button>
+                </div>
+
                 <div class="tabs">
                     <button class="tab active" data-filter="all">All</button>
                     <button class="tab" data-filter="python">Python</button>
@@ -552,7 +595,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
             allFiles: [],
             selectedFiles: {},
             existingImports: [],
-            keywords: [],
+            extractedKeywords: [],
             selectedKeyword: null,
             keywordSource: null,
             searchTerm: '',
@@ -611,6 +654,27 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
         document.getElementById('cancelBtn').addEventListener('click', () => {
             vscode.postMessage({ type: 'cancelImports' });
+        });
+
+        // Expand/Collapse All Handlers
+        document.getElementById('expandAllBtn').addEventListener('click', () => {
+            const allFolderContents = document.querySelectorAll('.folder-content');
+            const allToggleIcons = document.querySelectorAll('.toggle-icon');
+            const allFolderIcons = document.querySelectorAll('.folder-icon');
+
+            allFolderContents.forEach(content => content.classList.remove('collapsed'));
+            allToggleIcons.forEach(icon => icon.textContent = '▼');
+            allFolderIcons.forEach(icon => icon.textContent = '📂');
+        });
+
+        document.getElementById('collapseAllBtn').addEventListener('click', () => {
+            const allFolderContents = document.querySelectorAll('.folder-content');
+            const allToggleIcons = document.querySelectorAll('.toggle-icon');
+            const allFolderIcons = document.querySelectorAll('.folder-icon');
+
+            allFolderContents.forEach(content => content.classList.add('collapsed'));
+            allToggleIcons.forEach(icon => icon.textContent = '▶');
+            allFolderIcons.forEach(icon => icon.textContent = '📁');
         });
 
         // Render Functions using DOM methods to avoid XSS
@@ -684,6 +748,34 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
             container.appendChild(btnGroup);
         }
 
+        // Build tree structure from flat file list
+        function buildFileTree(files) {
+            const tree = {};
+
+            files.forEach(filePath => {
+                const parts = filePath.split('/');
+                let current = tree;
+
+                parts.forEach((part, index) => {
+                    if (index === parts.length - 1) {
+                        // It's a file
+                        if (!current._files) {
+                            current._files = [];
+                        }
+                        current._files.push(filePath);
+                    } else {
+                        // It's a folder
+                        if (!current[part]) {
+                            current[part] = {};
+                        }
+                        current = current[part];
+                    }
+                });
+            });
+
+            return tree;
+        }
+
         function renderFileBrowser() {
             const container = document.getElementById('fileBrowser');
             container.textContent = ''; // Clear
@@ -713,10 +805,68 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
                 return;
             }
 
-            filteredFiles.forEach(file => {
+            // Build and render tree
+            const fileTree = buildFileTree(filteredFiles);
+            renderTreeNode(container, fileTree, '');
+        }
+
+        function renderTreeNode(container, node, path) {
+            // Sort folders and files
+            const folders = Object.keys(node).filter(key => key !== '_files').sort();
+            const files = node._files || [];
+
+            // Render folders first
+            folders.forEach(folderName => {
+                const folderPath = path ? path + '/' + folderName : folderName;
+                const folderItem = createFolderItem(folderName, node[folderName], folderPath);
+                container.appendChild(folderItem);
+            });
+
+            // Render files
+            files.forEach(file => {
                 const fileItem = createFileItem(file);
                 container.appendChild(fileItem);
             });
+        }
+
+        function createFolderItem(folderName, children, folderPath) {
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'folder-item';
+
+            const header = document.createElement('div');
+            header.className = 'folder-header';
+
+            const toggleIcon = document.createElement('span');
+            toggleIcon.className = 'toggle-icon';
+            toggleIcon.textContent = '▶'; // Collapsed by default
+
+            const folderIcon = document.createElement('span');
+            folderIcon.className = 'folder-icon';
+            folderIcon.textContent = '📁'; // Closed by default
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = folderName;
+
+            header.appendChild(toggleIcon);
+            header.appendChild(folderIcon);
+            header.appendChild(nameSpan);
+
+            const content = document.createElement('div');
+            content.className = 'folder-content collapsed'; // Collapsed by default
+
+            // Render children
+            renderTreeNode(content, children, folderPath);
+
+            header.onclick = () => {
+                content.classList.toggle('collapsed');
+                toggleIcon.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
+                folderIcon.textContent = content.classList.contains('collapsed') ? '📁' : '📂';
+            };
+
+            folderDiv.appendChild(header);
+            folderDiv.appendChild(content);
+
+            return folderDiv;
         }
 
         function createFileItem(file) {
@@ -731,11 +881,27 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
             checkbox.type = 'checkbox';
             checkbox.checked = fileInfo.checked;
             checkbox.onchange = () => {
+                // When checking, keep current import type or auto-select default for file type
+                // When unchecking, clear the import type
+                let importType = fileInfo.importType;
+                if (checkbox.checked && !importType) {
+                    // Auto-select default import type based on file extension
+                    if (file.endsWith('.py')) {
+                        importType = 'Library';
+                    } else if (file.endsWith('.resource') || file.endsWith('.robot')) {
+                        importType = 'Resource';
+                    } else {
+                        importType = null; // No default for other types
+                    }
+                } else if (!checkbox.checked) {
+                    importType = null; // Clear import type when unchecking
+                }
+
                 vscode.postMessage({
                     type: 'selectFile',
                     filePath: file,
                     checked: checkbox.checked,
-                    importType: fileInfo.importType
+                    importType: importType
                 });
             };
 
@@ -748,8 +914,18 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
             nameSpan.title = file;
             nameSpan.textContent = fileName;
 
+            // Determine available import types based on file extension
+            let availableTypes = [];
+            if (file.endsWith('.py')) {
+                availableTypes = ['', 'Library', 'Variables'];
+            } else if (file.endsWith('.resource') || file.endsWith('.robot')) {
+                availableTypes = ['', 'Resource', 'Variables'];
+            } else {
+                availableTypes = ['', 'Library', 'Resource', 'Variables'];
+            }
+
             const select = document.createElement('select');
-            ['', 'Library', 'Resource', 'Variables'].forEach(type => {
+            availableTypes.forEach(type => {
                 const option = document.createElement('option');
                 option.value = type;
                 option.textContent = type || '-- Select Type --';
@@ -854,7 +1030,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
             const container = document.getElementById('keywordsListTab');
             container.textContent = '';
 
-            if (!state.keywords || state.keywords.length === 0) {
+            if (!state.extractedKeywords || state.extractedKeywords.length === 0) {
                 container.appendChild(createEmpty('⚡', 'No keywords extracted'));
                 return;
             }
@@ -867,7 +1043,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
                 container.appendChild(sourceDiv);
             }
 
-            state.keywords.forEach(keyword => {
+            state.extractedKeywords.forEach(keyword => {
                 const card = createKeywordCard(keyword);
                 container.appendChild(card);
             });
@@ -886,11 +1062,11 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
             const argsDiv = document.createElement('div');
             argsDiv.className = 'keyword-args';
-            argsDiv.textContent = keyword.arguments.join(', ') || 'No arguments';
+            argsDiv.textContent = keyword.args ? keyword.args.join(', ') : 'No arguments';
 
             const docDiv = document.createElement('div');
             docDiv.className = 'keyword-doc-preview';
-            docDiv.textContent = keyword.documentation || 'No documentation';
+            docDiv.textContent = keyword.doc || 'No documentation';
 
             const insertBtn = document.createElement('button');
             insertBtn.className = 'btn-icon mt-2';
@@ -931,8 +1107,8 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
 
             const sections = [
                 { label: 'Name', value: kw.name },
-                { label: 'Arguments', value: kw.arguments.join(', ') || 'None' },
-                { label: 'Documentation', value: kw.documentation || 'No documentation available' }
+                { label: 'Arguments', value: kw.args ? kw.args.join(', ') : 'None' },
+                { label: 'Documentation', value: kw.doc || 'No documentation available' }
             ];
 
             sections.forEach(sec => {

@@ -1,18 +1,6 @@
 import * as vscode from 'vscode';
 import { isRobotFrameworkFile } from './file-operations';
-import {
-    unlockTargetFile,
-    isLocked,
-    getLockedTargetFile
-} from './target-manager';
-import {
-    initializeTreeView,
-    loadImportsForFile,
-    getCurrentTreeView,
-    disposeCurrentTreeView,
-    disposeWelcomeTreeView,
-    refreshCurrentTreeIndicators
-} from './import-manager';
+import { isLocked } from './target-manager';
 import { registerCommands } from './commands';
 import { initializeFileViewTracker } from './file-view-tracker';
 import { ImportWebviewProvider } from './webview/ImportWebviewProvider';

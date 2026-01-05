@@ -131,11 +131,11 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
                 break;
 
             case 'viewFile':
-                await this.viewFile(message.filePath);
+                await this.viewFile(this.toAbsolutePath(message.filePath));
                 break;
 
             case 'extractKeywords':
-                await this.extractKeywords(message.filePath);
+                await this.extractKeywords(this.toAbsolutePath(message.filePath));
                 break;
 
             case 'selectKeyword':
@@ -183,9 +183,27 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
     private async scanWorkspaceFiles() {
         const files = await vscode.workspace.findFiles(
             '**/*.{py,robot,resource}',
-            '**/node_modules/**'
+            '{**/node_modules/**,**/.venv/**,**/venv/**}'
         );
-        this.state.allImportableFiles = files;
+
+        // Filter out __init__ files and convert to workspace-relative paths
+        const filteredFiles = files
+            .filter(file => {
+                const fileName = file.fsPath.split('/').pop() || '';
+                return !fileName.startsWith('__init__');
+            })
+            .map(file => {
+                // Convert to workspace-relative path
+                if (this.workspaceRoot) {
+                    const relativePath = file.fsPath.replace(this.workspaceRoot + '/', '');
+                    return relativePath;
+                }
+                return file.fsPath;
+            });
+
+        this.state.allImportableFiles = filteredFiles.map(path =>
+            vscode.Uri.file(this.workspaceRoot ? this.workspaceRoot + '/' + path : path)
+        );
         this.sendFileListToWebview();
     }
 
@@ -259,6 +277,13 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
 
     private async viewFile(filePath: string) {
         try {
+            // Automatically lock target file when viewing another file
+            if (this.state.targetFile && !isLocked()) {
+                lockTargetFile(this.state.targetFile);
+                this.state.isLocked = true;
+                this.sendStateToWebview();
+            }
+
             const document = await vscode.workspace.openTextDocument(filePath);
             await vscode.window.showTextDocument(document);
         } catch (error) {
@@ -352,33 +377,56 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         try {
-            const selectedImports: SelectedItem[] = [];
+            const pathModule = await import('path');
+            const targetDir = pathModule.dirname(this.state.targetFile);
+            const allImports: SelectedItem[] = [];
 
+            // First, add existing imports to preserve them
+            for (const existingImport of this.state.existingImports) {
+                const absolutePath = this.toAbsolutePath(existingImport.path);
+                const relativePath = pathModule.relative(targetDir, absolutePath);
+
+                allImports.push({
+                    isFile: true,
+                    filePath: absolutePath,
+                    relativePath: relativePath,
+                    absolutePath: absolutePath,
+                    importType: existingImport.type
+                });
+            }
+
+            // Then, add newly selected imports
             for (const [filePath, info] of this.state.selectedFiles) {
                 if (info.checked && info.importType) {
-                    const pathModule = await import('path');
-                    const targetDir = pathModule.dirname(this.state.targetFile);
-                    const relativePath = pathModule.relative(targetDir, filePath);
+                    const absolutePath = this.toAbsolutePath(filePath);
+                    const relativePath = pathModule.relative(targetDir, absolutePath);
 
-                    selectedImports.push({
-                        isFile: true,
-                        filePath: filePath,
-                        relativePath: relativePath,
-                        absolutePath: filePath,
-                        importType: info.importType
-                    });
+                    // Check if this import already exists to avoid duplicates
+                    const isDuplicate = allImports.some(imp =>
+                        imp.absolutePath === absolutePath || imp.relativePath === relativePath
+                    );
+
+                    if (!isDuplicate) {
+                        allImports.push({
+                            isFile: true,
+                            filePath: absolutePath,
+                            relativePath: relativePath,
+                            absolutePath: absolutePath,
+                            importType: info.importType
+                        });
+                    }
                 }
             }
 
-            if (selectedImports.length === 0) {
-                vscode.window.showWarningMessage('No files selected for import');
+            if (allImports.length === 0) {
+                vscode.window.showWarningMessage('No imports to save');
                 return;
             }
 
             const document = await vscode.workspace.openTextDocument(this.state.targetFile);
             const content = document.getText();
 
-            const settingsSection = generateSettingsSection(selectedImports, 'relative');
+            const settingsSection = generateSettingsSection(allImports, 'relative');
 
             const newContent = updateSettingsSection(content, settingsSection);
 
@@ -423,6 +471,15 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
         return filePath.endsWith('.robot') || filePath.endsWith('.resource');
     }
 
+    private toAbsolutePath(relativePath: string): string {
+        // If already absolute, return as-is
+        if (relativePath.startsWith('/')) {
+            return relativePath;
+        }
+        // Convert workspace-relative to absolute
+        return this.workspaceRoot ? this.workspaceRoot + '/' + relativePath : relativePath;
+    }
+
     private sendStateToWebview() {
         if (!this._view) {
             return;
@@ -434,12 +491,20 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
             selectedFilesObj[key] = value;
         }
 
+        // Convert to workspace-relative paths for display
+        const relativePaths = this.state.allImportableFiles.map(uri => {
+            if (this.workspaceRoot) {
+                return uri.fsPath.replace(this.workspaceRoot + '/', '');
+            }
+            return uri.fsPath;
+        });
+
         this._view.webview.postMessage({
             type: 'stateUpdate',
             state: {
                 ...this.state,
                 selectedFiles: selectedFilesObj,
-                allImportableFiles: this.state.allImportableFiles.map(uri => uri.fsPath)
+                allImportableFiles: relativePaths
             }
         });
     }
@@ -449,9 +514,17 @@ export class ImportWebviewProvider implements vscode.WebviewViewProvider {
             return;
         }
 
+        // Convert to workspace-relative paths for display
+        const relativePaths = this.state.allImportableFiles.map(uri => {
+            if (this.workspaceRoot) {
+                return uri.fsPath.replace(this.workspaceRoot + '/', '');
+            }
+            return uri.fsPath;
+        });
+
         this._view.webview.postMessage({
             type: 'fileListUpdate',
-            files: this.state.allImportableFiles.map(uri => uri.fsPath)
+            files: relativePaths
         });
     }
 
