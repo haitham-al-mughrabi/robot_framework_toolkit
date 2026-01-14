@@ -248,6 +248,24 @@
       ]
     }
   },
+  "configuration": {
+    "title": "Robot Framework Toolkit",
+    "properties": {
+      "robotFrameworkToolkit.importPathType": {
+        "type": "string",
+        "enum": [
+          "relative",
+          "absolute"
+        ],
+        "default": "relative",
+        "description": "Default path type for imports: 'relative' for paths relative to file location, 'absolute' for workspace root paths",
+        "enumDescriptions": [
+          "Relative paths (e.g., ../folder/file.py)",
+          "Workspace root paths (e.g., folder/file.py)"
+        ]
+      }
+    }
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",

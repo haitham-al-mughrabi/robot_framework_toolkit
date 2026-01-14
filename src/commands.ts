@@ -44,7 +44,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const createResourceFile = vscode.commands.registerCommand(
         'rfFilesCreator.createResourceFile',
         async (uri: vscode.Uri) => {
-            await createRobotFileWithImports(uri, 'resource', '.resource', '*** Keywords ***');
+            await createRobotFile(uri, 'resource', '.resource', '*** Settings ***\n\n\n*** Keywords ***\n');
         }
     );
 
@@ -52,7 +52,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const createVariablesFile = vscode.commands.registerCommand(
         'rfFilesCreator.createVariablesFile',
         async (uri: vscode.Uri) => {
-            await createRobotFileWithImports(uri, 'variables', '.resource', '*** Variables ***');
+            await createRobotFile(uri, 'variables', '.resource', '*** Settings ***\n\n\n*** Variables ***\n');
         }
     );
 

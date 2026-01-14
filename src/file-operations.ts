@@ -135,29 +135,10 @@ export function updateSettingsSection(fileContent: string, newSettingsSection: s
  * Prompt user to select path type (relative or absolute)
  */
 export async function selectPathType(): Promise<PathType | undefined> {
-    const options: vscode.QuickPickItem[] = [
-        {
-            label: '$(link) Relative Path',
-            description: '../folder/file.py',
-            detail: 'Path relative to the file location'
-        },
-        {
-            label: '$(home) Workspace Path',
-            description: 'folder/file.py',
-            detail: 'Path from workspace root'
-        }
-    ];
-
-    const selected = await vscode.window.showQuickPick(options, {
-        title: 'Select Import Path Style',
-        placeHolder: 'How should import paths be formatted?'
-    });
-
-    if (!selected) {
-        return undefined;
-    }
-
-    return selected.label.includes('Relative') ? 'relative' : 'absolute';
+    const config = vscode.workspace.getConfiguration('robotFrameworkToolkit');
+    const savedPathType = config.get<string>('importPathType', 'relative');
+    
+    return (savedPathType === 'absolute' ? 'absolute' : 'relative') as PathType;
 }
 
 /**
