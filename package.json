@@ -2,7 +2,7 @@
   "name": "robot-framework-toolkit",
   "displayName": "Robot Framework Toolkit",
   "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
-  "version": "1.0.11",
+  "version": "1.1.0",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
@@ -24,7 +24,10 @@
     "locators"
   ],
   "activationEvents": [
-    "onView:rfImportSelector",
+    "onView:rfImportableFiles",
+    "onView:rfCurrentImports",
+    "onView:rfKeywords",
+    "onView:rfKeywordDetails",
     "onCommand:rfFilesCreator.createTestFile",
     "onCommand:rfFilesCreator.createResourceFile",
     "onCommand:rfFilesCreator.createVariablesFile",
@@ -149,84 +152,121 @@
     "views": {
       "rf-toolkit": [
         {
-          "id": "rfImportSelector",
-          "name": "Import Libraries & Resources",
-          "icon": "$(checklist)"
+          "id": "rfImportableFiles",
+          "name": "Importable Files",
+          "icon": "$(folder-library)",
+          "contextualTitle": "Robot Framework Importable Files"
+        },
+        {
+          "id": "rfCurrentImports",
+          "name": "Current Imports",
+          "icon": "$(list-selection)",
+          "contextualTitle": "Robot Framework Current Imports"
+        },
+        {
+          "id": "rfKeywords",
+          "name": "Keywords Explorer",
+          "icon": "$(symbol-method)",
+          "contextualTitle": "Robot Framework Keywords"
+        },
+        {
+          "id": "rfKeywordDetails",
+          "name": "Keyword Details",
+          "icon": "$(info)",
+          "contextualTitle": "Robot Framework Keyword Details"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "rfImportableFiles",
+        "contents": "Open a Robot Framework file (.robot or .resource) to manage imports.\n[Open File](command:workbench.action.files.openFile)"
+      },
+      {
+        "view": "rfCurrentImports",
+        "contents": "No imports to display.\nOpen a Robot Framework file to see its imports."
+      },
+      {
+        "view": "rfKeywords",
+        "contents": "No keywords to display.\nClick the keywords icon on an import to view its keywords."
+      },
+      {
+        "view": "rfKeywordDetails",
+        "contents": "No keyword selected.\nClick on a keyword to view its details."
+      }
+    ],
     "menus": {
       "view/title": [
         {
           "command": "rfFilesCreator.openSettings",
-          "when": "view == rfImportSelector",
+          "when": "view == rfImportableFiles",
           "group": "navigation@0"
         },
         {
           "command": "rfFilesCreator.refreshImports",
-          "when": "view == rfImportSelector",
+          "when": "view == rfImportableFiles || view == rfCurrentImports",
           "group": "navigation@1"
         },
         {
           "command": "rfFilesCreator.goToTarget",
-          "when": "view == rfImportSelector",
+          "when": "view == rfImportableFiles || view == rfCurrentImports",
           "group": "navigation@2"
         },
         {
           "command": "rfFilesCreator.searchImports",
-          "when": "view == rfImportSelector",
+          "when": "view == rfImportableFiles",
           "group": "navigation@2"
         },
         {
           "command": "rfFilesCreator.clearSearch",
-          "when": "view == rfImportSelector && rfHasActiveSearch",
+          "when": "view == rfImportableFiles && rfHasActiveSearch",
           "group": "navigation@3"
         },
         {
           "command": "rfFilesCreator.expandAll",
-          "when": "view == rfImportSelector",
+          "when": "view == rfImportableFiles || view == rfKeywords",
           "group": "navigation@4"
         },
         {
           "command": "rfFilesCreator.collapseAll",
-          "when": "view == rfImportSelector",
+          "when": "view == rfImportableFiles || view == rfKeywords",
           "group": "navigation@5"
         },
         {
           "command": "rfFilesCreator.confirmImports",
-          "when": "view == rfImportSelector && rfHasPendingChanges",
+          "when": "view == rfImportableFiles && rfHasPendingChanges",
           "group": "navigation@6"
         },
         {
           "command": "rfFilesCreator.cancelImports",
-          "when": "view == rfImportSelector && rfHasPendingChanges",
+          "when": "view == rfImportableFiles && rfHasPendingChanges",
           "group": "navigation@7"
         }
       ],
       "view/item/context": [
         {
           "command": "rfFilesCreator.viewFile",
-          "when": "view == rfImportSelector && viewItem == file",
+          "when": "view == rfImportableFiles && viewItem == file",
           "group": "inline"
         },
         {
           "command": "rfFilesCreator.viewKeywords",
-          "when": "view == rfImportSelector && viewItem == file",
+          "when": "view == rfImportableFiles && viewItem == file",
           "group": "inline"
         },
         {
           "command": "rfFilesCreator.viewCurrentImport",
-          "when": "view == rfImportSelector && viewItem == currentImport",
+          "when": "view == rfCurrentImports && viewItem == currentImport",
           "group": "inline"
         },
         {
           "command": "rfFilesCreator.deleteImport",
-          "when": "view == rfImportSelector && viewItem == currentImport",
+          "when": "view == rfCurrentImports && viewItem == currentImport",
           "group": "inline"
         },
         {
           "command": "rfFilesCreator.viewKeywords",
-          "when": "view == rfImportSelector && viewItem == currentImport",
+          "when": "view == rfCurrentImports && viewItem == currentImport",
           "group": "inline"
         }
       ],

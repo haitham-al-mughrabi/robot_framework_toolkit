@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ImportType, SelectedKeywordInfo } from './types';
 import { ImportTreeItem, KeywordTreeItem } from './tree/items';
-import { expandAllItems, setHasPendingChanges } from './tree/providers';
+import { setHasPendingChanges } from './tree/providers';
 import { extractKeywordsFromFile } from './parsers';
 import {
     isRobotFrameworkFile,
@@ -18,14 +18,15 @@ import {
     getOriginalTargetFile
 } from './target-manager';
 import {
-    getCurrentTreeView,
-    getCurrentTreeProvider,
+    getImportableFilesView,
+    getImportableFilesProvider,
+    getKeywordsProvider,
+    getKeywordDetailsProvider,
+    getCurrentImportsProvider,
     getImportSelectionResolver,
-    loadImportsForFile,
-    generatePreviewContent,
-    editRobotFileImports,
-    createRobotFileWithImports
-} from './import-manager';
+    loadImportsForFile
+} from './multi-view-manager';
+import { expandAllItems } from './tree/multi-view-providers';
 import { addCurrentlyViewedFile } from './file-view-tracker';
 import { SettingsPanel } from './settings-panel';
 
@@ -37,7 +38,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const createTestFile = vscode.commands.registerCommand(
         'rfFilesCreator.createTestFile',
         async (uri: vscode.Uri) => {
-            await createRobotFileWithImports(uri, 'test', '.robot', '*** Test Cases ***');
+            await createRobotFile(uri, 'test', '.robot', '*** Settings ***\n\n\n*** Test Cases ***\n');
         }
     );
 
@@ -69,7 +70,9 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const editImports = vscode.commands.registerCommand(
         'rfFilesCreator.editImports',
         async (uri: vscode.Uri) => {
-            await editRobotFileImports(uri);
+            // Load the imports for the selected file
+            await loadImportsForFile(uri.fsPath);
+            vscode.window.showInformationMessage('Import selection loaded. Use the toolbar buttons to manage imports.');
         }
     );
 
@@ -99,8 +102,8 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const selectImportType = vscode.commands.registerCommand(
         'rfFilesCreator.selectImportType',
         async (item: ImportTreeItem) => {
-            const currentTreeProvider = getCurrentTreeProvider();
-            if (!item.isFile || !currentTreeProvider) return;
+            const importableFilesProvider = getImportableFilesProvider();
+            if (!item.isFile || !importableFilesProvider) return;
 
             // Show quick pick with available import types + option to deselect
             const options: vscode.QuickPickItem[] = item.availableImportTypes.map(type => ({
@@ -123,31 +126,10 @@ export function registerCommands(context: vscode.ExtensionContext): void {
 
             if (selected) {
                 if (selected.label === '$(close) Remove Import') {
-                    currentTreeProvider.setImportType(item, null);
+                    importableFilesProvider.setImportType(item, null);
                 } else {
-                    currentTreeProvider.setImportType(item, selected.label as ImportType);
+                    importableFilesProvider.setImportType(item, selected.label as ImportType);
                 }
-            }
-        }
-    );
-
-    // Register command: Preview Imports
-    const previewImports = vscode.commands.registerCommand(
-        'rfFilesCreator.previewImports',
-        () => {
-            const currentTreeProvider = getCurrentTreeProvider();
-            if (currentTreeProvider) {
-                const selectedItems = currentTreeProvider.getSelectedItems();
-                if (selectedItems.length === 0) {
-                    vscode.window.showInformationMessage('No imports selected to preview.');
-                    return;
-                }
-
-                // Generate preview content for selected imports
-                const previewContent = generatePreviewContent(selectedItems);
-
-                // Show the preview in an information message
-                vscode.window.showInformationMessage(`Preview:\n${previewContent}`, 'OK');
             }
         }
     );
@@ -156,19 +138,18 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const searchImports = vscode.commands.registerCommand(
         'rfFilesCreator.searchImports',
         async () => {
-            const currentTreeProvider = getCurrentTreeProvider();
-            if (currentTreeProvider) {
+            const importableFilesProvider = getImportableFilesProvider();
+            if (importableFilesProvider) {
                 const searchTerm = await vscode.window.showInputBox({
                     prompt: 'Enter search term to filter imports',
                     placeHolder: 'Search files, folders, or import types...',
                     validateInput: (_value) => {
-                        // No validation needed
                         return null;
                     }
                 });
 
-                if (searchTerm !== undefined) { // Allow empty string to clear search
-                    currentTreeProvider.setSearchFilter(searchTerm);
+                if (searchTerm !== undefined) {
+                    importableFilesProvider.setSearchFilter(searchTerm);
                 }
             }
         }
@@ -178,9 +159,9 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const clearSearch = vscode.commands.registerCommand(
         'rfFilesCreator.clearSearch',
         () => {
-            const currentTreeProvider = getCurrentTreeProvider();
-            if (currentTreeProvider) {
-                currentTreeProvider.setSearchFilter('');
+            const importableFilesProvider = getImportableFilesProvider();
+            if (importableFilesProvider) {
+                importableFilesProvider.setSearchFilter('');
             }
         }
     );
@@ -189,11 +170,11 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const expandAll = vscode.commands.registerCommand(
         'rfFilesCreator.expandAll',
         async () => {
-            const currentTreeView = getCurrentTreeView();
-            const currentTreeProvider = getCurrentTreeProvider();
-            if (currentTreeView && currentTreeProvider) {
-                const rootItems = currentTreeProvider.getRootItems();
-                await expandAllItems(currentTreeView, rootItems);
+            const importableFilesView = getImportableFilesView();
+            const importableFilesProvider = getImportableFilesProvider();
+            if (importableFilesView && importableFilesProvider) {
+                const rootItems = importableFilesProvider.getRootItems();
+                await expandAllItems(importableFilesView, rootItems);
             }
         }
     );
@@ -202,8 +183,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const collapseAll = vscode.commands.registerCommand(
         'rfFilesCreator.collapseAll',
         async () => {
-            // Use VSCode's built-in collapse all command for the tree view
-            await vscode.commands.executeCommand('workbench.actions.treeView.rfImportSelector.collapseAll');
+            await vscode.commands.executeCommand('workbench.actions.treeView.rfImportableFiles.collapseAll');
         }
     );
 
@@ -480,13 +460,13 @@ export function registerCommands(context: vscode.ExtensionContext): void {
                     const keywords = extractKeywordsFromFile(filePath);
 
                     if (keywords.length > 0) {
-                        // Show keywords in the tree view
-                        const currentTreeProvider = getCurrentTreeProvider();
-                        if (currentTreeProvider) {
-                            currentTreeProvider.setKeywords(keywords, filePath);
+                        // Show keywords in the keywords view
+                        const keywordsProvider = getKeywordsProvider();
+                        if (keywordsProvider) {
+                            keywordsProvider.setKeywords(keywords, filePath);
                             vscode.window.showInformationMessage(`Showing ${keywords.length} keywords from ${path.basename(filePath)}`);
                         } else {
-                            vscode.window.showWarningMessage('Import selector not available');
+                            vscode.window.showWarningMessage('Keywords view not available');
                         }
                     } else {
                         vscode.window.showInformationMessage(`No keywords found in ${path.basename(filePath)}`);
@@ -547,9 +527,9 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     const selectKeywordForInfo = vscode.commands.registerCommand(
         'rfFilesCreator.selectKeywordForInfo',
         async (keywordInfo: SelectedKeywordInfo) => {
-            const currentTreeProvider = getCurrentTreeProvider();
-            if (currentTreeProvider) {
-                currentTreeProvider.setSelectedKeyword(keywordInfo);
+            const keywordDetailsProvider = getKeywordDetailsProvider();
+            if (keywordDetailsProvider) {
+                keywordDetailsProvider.setSelectedKeyword(keywordInfo);
             }
         }
     );
@@ -601,7 +581,6 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         confirmImports,
         cancelImports,
         selectImportType,
-        previewImports,
         searchImports,
         clearSearch,
         expandAll,
