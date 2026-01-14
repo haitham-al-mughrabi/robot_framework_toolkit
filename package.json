@@ -2,7 +2,7 @@
   "name": "robot-framework-toolkit",
   "displayName": "Robot Framework Toolkit",
   "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
@@ -29,7 +29,8 @@
     "onCommand:rfFilesCreator.createResourceFile",
     "onCommand:rfFilesCreator.createVariablesFile",
     "onCommand:rfFilesCreator.createLocatorsFile",
-    "onCommand:rfFilesCreator.editImports"
+    "onCommand:rfFilesCreator.editImports",
+    "onCommand:rfFilesCreator.openSettings"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -129,6 +130,11 @@
       {
         "command": "rfFilesCreator.viewKeywordDoc",
         "title": "View Keyword Documentation"
+      },
+      {
+        "command": "rfFilesCreator.openSettings",
+        "title": "Open Robot Framework Toolkit Settings",
+        "icon": "$(settings-gear)"
       }
     ],
     "viewsContainers": {
@@ -152,44 +158,49 @@
     "menus": {
       "view/title": [
         {
-          "command": "rfFilesCreator.refreshImports",
+          "command": "rfFilesCreator.openSettings",
           "when": "view == rfImportSelector",
           "group": "navigation@0"
         },
         {
-          "command": "rfFilesCreator.goToTarget",
+          "command": "rfFilesCreator.refreshImports",
           "when": "view == rfImportSelector",
           "group": "navigation@1"
+        },
+        {
+          "command": "rfFilesCreator.goToTarget",
+          "when": "view == rfImportSelector",
+          "group": "navigation@2"
         },
         {
           "command": "rfFilesCreator.searchImports",
           "when": "view == rfImportSelector",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "rfFilesCreator.clearSearch",
           "when": "view == rfImportSelector && rfHasActiveSearch",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "rfFilesCreator.expandAll",
           "when": "view == rfImportSelector",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "rfFilesCreator.collapseAll",
           "when": "view == rfImportSelector",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "rfFilesCreator.confirmImports",
           "when": "view == rfImportSelector && rfHasPendingChanges",
-          "group": "navigation@5"
+          "group": "navigation@6"
         },
         {
           "command": "rfFilesCreator.cancelImports",
           "when": "view == rfImportSelector && rfHasPendingChanges",
-          "group": "navigation@6"
+          "group": "navigation@7"
         }
       ],
       "view/item/context": [

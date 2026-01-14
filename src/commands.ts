@@ -27,6 +27,7 @@ import {
     createRobotFileWithImports
 } from './import-manager';
 import { addCurrentlyViewedFile } from './file-view-tracker';
+import { SettingsPanel } from './settings-panel';
 
 /**
  * Register all extension commands
@@ -583,6 +584,14 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         }
     );
 
+    // Register command: Open Settings
+    const openSettings = vscode.commands.registerCommand(
+        'rfFilesCreator.openSettings',
+        () => {
+            SettingsPanel.createOrShow(context.extensionUri);
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
@@ -607,6 +616,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         insertKeyword,
         selectKeywordForInfo,
         insertKeywordFromInfo,
-        viewKeywordDoc
+        viewKeywordDoc,
+        openSettings
     );
 }
