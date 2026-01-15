@@ -139,6 +139,8 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         'rfFilesCreator.searchImports',
         async () => {
             const importableFilesProvider = getImportableFilesProvider();
+            const importableFilesView = getImportableFilesView();
+
             if (importableFilesProvider) {
                 const searchTerm = await vscode.window.showInputBox({
                     prompt: 'Enter search term to filter imports',
@@ -150,6 +152,15 @@ export function registerCommands(context: vscode.ExtensionContext): void {
 
                 if (searchTerm !== undefined) {
                     importableFilesProvider.setSearchFilter(searchTerm);
+
+                    // Automatically expand all items when search results are shown
+                    if (searchTerm && importableFilesView) {
+                        // Wait for the tree to fully refresh before expanding
+                        setTimeout(async () => {
+                            const rootItems = importableFilesProvider.getRootItems();
+                            await expandAllItems(importableFilesView, rootItems);
+                        }, 300);
+                    }
                 }
             }
         }

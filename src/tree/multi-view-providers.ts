@@ -120,6 +120,7 @@ export class ImportableFilesProvider implements vscode.TreeDataProvider<ImportTr
                         folderName,
                         vscode.TreeItemCollapsibleState.Collapsed
                     );
+                    folderItem.parent = currentParent;
                     folderMap.set(currentPath, folderItem);
                     currentParent.children.push(folderItem);
                 }
@@ -145,6 +146,7 @@ export class ImportableFilesProvider implements vscode.TreeDataProvider<ImportTr
                     isCurrentlyViewed: isCurrentlyViewed || false
                 }
             );
+            fileItem.parent = currentParent;
             currentParent.children.push(fileItem);
             this.allFileItems.push(fileItem);
         }
@@ -180,6 +182,10 @@ export class ImportableFilesProvider implements vscode.TreeDataProvider<ImportTr
         return element.children;
     }
 
+    getParent(element: ImportTreeItem): ImportTreeItem | undefined {
+        return element.parent;
+    }
+
     setSearchFilter(filter: string) {
         this.searchFilter = filter.toLowerCase();
         if (this.searchFilter) {
@@ -202,23 +208,29 @@ export class ImportableFilesProvider implements vscode.TreeDataProvider<ImportTr
         }
     }
 
-    private filterTreeItem(item: ImportTreeItem): ImportTreeItem | null {
+    private filterTreeItem(item: ImportTreeItem, parent?: ImportTreeItem): ImportTreeItem | null {
         if (item.isFile) {
             const matches = item.label.toLowerCase().includes(this.searchFilter) ||
                            (item.description && typeof item.description === 'string' &&
                             item.description.toLowerCase().includes(this.searchFilter));
-            return matches ? item : null;
+            if (matches) {
+                item.parent = parent;
+                return item;
+            }
+            return null;
         } else {
             const filteredChildren: ImportTreeItem[] = [];
+            const newItem = new ImportTreeItem(item.label, vscode.TreeItemCollapsibleState.Expanded);
+            newItem.parent = parent;
+
             for (const child of item.children) {
-                const filteredChild = this.filterTreeItem(child);
+                const filteredChild = this.filterTreeItem(child, newItem);
                 if (filteredChild) {
                     filteredChildren.push(filteredChild);
                 }
             }
 
             if (filteredChildren.length > 0) {
-                const newItem = new ImportTreeItem(item.label, vscode.TreeItemCollapsibleState.Expanded);
                 newItem.children = filteredChildren;
                 newItem.isFile = false;
                 newItem.iconPath = item.iconPath;
@@ -529,8 +541,15 @@ export class KeywordDetailsProvider implements vscode.TreeDataProvider<ImportTre
 export async function expandAllItems(treeView: vscode.TreeView<ImportTreeItem>, items: ImportTreeItem[]): Promise<void> {
     for (const item of items) {
         if (item.children && item.children.length > 0) {
-            await treeView.reveal(item, { expand: true, select: false, focus: false });
-            await expandAllItems(treeView, item.children);
+            try {
+                await treeView.reveal(item, { expand: true, select: false, focus: false });
+                // Small delay to ensure the tree view has time to render the expanded state
+                await new Promise(resolve => setTimeout(resolve, 50));
+                await expandAllItems(treeView, item.children);
+            } catch (error) {
+                // Silently ignore reveal errors (item might not be in tree yet)
+                console.warn('Failed to reveal tree item:', error);
+            }
         }
     }
 }

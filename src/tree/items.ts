@@ -4,6 +4,7 @@ import { ImportType } from '../types';
 // Tree item for import selection
 export class ImportTreeItem extends vscode.TreeItem {
     children: ImportTreeItem[] = [];
+    parent?: ImportTreeItem; // Reference to parent item
     isFile: boolean = false;
     filePath: string = '';
     relativePath: string = '';
