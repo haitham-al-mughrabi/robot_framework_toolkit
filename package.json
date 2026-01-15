@@ -2,7 +2,7 @@
   "name": "robot-framework-toolkit",
   "displayName": "Robot Framework Toolkit",
   "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
-  "version": "1.1.3",
+  "version": "1.2.1",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
@@ -138,6 +138,10 @@
         "command": "rfFilesCreator.openSettings",
         "title": "Open Robot Framework Toolkit Settings",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "rfFilesCreator.changeFileType",
+        "title": "Change Robot Framework File Type"
       }
     ],
     "viewsContainers": {
@@ -295,6 +299,11 @@
           "command": "rfFilesCreator.editImports",
           "group": "navigation@14",
           "when": "resourceExtname == .robot || resourceExtname == .resource"
+        },
+        {
+          "command": "rfFilesCreator.changeFileType",
+          "group": "navigation@15",
+          "when": "resourceExtname == .robot || resourceExtname == .resource || resourceExtname == .py"
         }
       ]
     },

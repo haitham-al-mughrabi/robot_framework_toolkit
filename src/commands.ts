@@ -583,6 +583,167 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         }
     );
 
+    // Register command: Change File Type
+    const changeFileType = vscode.commands.registerCommand(
+        'rfFilesCreator.changeFileType',
+        async (uri: vscode.Uri) => {
+            if (!uri) {
+                vscode.window.showErrorMessage('No file selected.');
+                return;
+            }
+
+            const filePath = uri.fsPath;
+            const fileName = path.basename(filePath);
+            const currentExtension = path.extname(filePath);
+
+            // Check if it's a Robot Framework file
+            if (!['.robot', '.resource', '.py'].includes(currentExtension)) {
+                vscode.window.showErrorMessage('This command only works with Robot Framework files (.robot, .resource, .py)');
+                return;
+            }
+
+            // Determine current file type by reading content
+            let currentType = 'Unknown';
+            try {
+                const content = fs.readFileSync(filePath, 'utf8');
+                if (content.includes('*** Test Cases ***')) {
+                    currentType = 'Test';
+                } else if (content.includes('*** Keywords ***')) {
+                    currentType = 'Resource';
+                } else if (content.includes('*** Variables ***') && !content.includes('*** Keywords ***')) {
+                    currentType = 'Variables';
+                } else if (currentExtension === '.py') {
+                    currentType = 'Locators';
+                }
+            } catch (error) {
+                vscode.window.showErrorMessage('Failed to read file.');
+                return;
+            }
+
+            // Show file type selection with loop to allow going back
+            let selected: { label: string; description: string; value: string } | undefined;
+            let confirmed = false;
+
+            while (!confirmed) {
+                // Show file type selection
+                const fileTypes = [
+                    { label: 'Test File', description: '.robot file with Test Cases section', value: 'test' },
+                    { label: 'Resource File', description: '.resource file with Keywords section', value: 'resource' },
+                    { label: 'Variables File', description: '.resource file with Variables section', value: 'variables' },
+                    { label: 'Locators File', description: '.py file for locators', value: 'locators' }
+                ];
+
+                selected = await vscode.window.showQuickPick(fileTypes, {
+                    title: `Change File Type (Current: ${currentType})`,
+                    placeHolder: 'Select new file type'
+                });
+
+                if (!selected) {
+                    return;
+                }
+
+                // Show confirmation dialog
+                const confirmation = await vscode.window.showWarningMessage(
+                    `Are you sure you want to change "${fileName}" to a ${selected.label}?\n\n⚠️ WARNING: All existing content will be deleted and replaced with a template.`,
+                    { modal: true },
+                    'Yes, Change Type',
+                    'Back'
+                );
+
+                if (confirmation === 'Yes, Change Type') {
+                    confirmed = true;
+                } else if (confirmation === 'Back') {
+                    // Loop back to file type selection
+                    continue;
+                } else {
+                    // User clicked X or ESC
+                    return;
+                }
+            }
+
+            // At this point, selected is guaranteed to be defined
+            if (!selected) {
+                return;
+            }
+
+            try {
+                // Determine new extension and content
+                let newExtension: string;
+                let newContent: string;
+
+                switch (selected.value) {
+                    case 'test':
+                        newExtension = '.robot';
+                        newContent = '*** Settings ***\n\n\n*** Test Cases ***\n';
+                        break;
+                    case 'resource':
+                        newExtension = '.resource';
+                        newContent = '*** Settings ***\n\n\n*** Keywords ***\n';
+                        break;
+                    case 'variables':
+                        newExtension = '.resource';
+                        newContent = '*** Settings ***\n\n\n*** Variables ***\n';
+                        break;
+                    case 'locators':
+                        newExtension = '.py';
+                        newContent = '';
+                        break;
+                    default:
+                        vscode.window.showErrorMessage('Invalid file type selected.');
+                        return;
+                }
+
+                const baseName = path.basename(filePath, currentExtension);
+                const dirName = path.dirname(filePath);
+                const newFilePath = path.join(dirName, baseName + newExtension);
+
+                // Close the document BEFORE making file system changes
+                const oldDoc = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === filePath);
+                if (oldDoc) {
+                    // Show the document first
+                    await vscode.window.showTextDocument(oldDoc);
+                    // Close it without saving
+                    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+                    // Wait a bit for VS Code to release the file handle
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                // If extension changed, rename the file
+                if (currentExtension !== newExtension) {
+                    // Check if target file already exists
+                    if (fs.existsSync(newFilePath) && newFilePath !== filePath) {
+                        vscode.window.showErrorMessage(`A file named "${baseName}${newExtension}" already exists in this directory.`);
+                        return;
+                    }
+
+                    // Write new content to the file
+                    fs.writeFileSync(filePath, newContent, 'utf8');
+
+                    // Rename the file
+                    fs.renameSync(filePath, newFilePath);
+
+                    // Open the new file
+                    const newDoc = await vscode.workspace.openTextDocument(newFilePath);
+                    await vscode.window.showTextDocument(newDoc);
+
+                    vscode.window.showInformationMessage(`File type changed to ${selected.label} and renamed to "${baseName}${newExtension}"`);
+                } else {
+                    // Same extension, just replace content
+                    fs.writeFileSync(filePath, newContent, 'utf8');
+
+                    // Reload the document
+                    const document = await vscode.workspace.openTextDocument(filePath);
+                    await vscode.window.showTextDocument(document);
+
+                    vscode.window.showInformationMessage(`File type changed to ${selected.label}`);
+                }
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : 'Unknown error';
+                vscode.window.showErrorMessage(`Failed to change file type: ${msg}`);
+            }
+        }
+    );
+
     context.subscriptions.push(
         createTestFile,
         createResourceFile,
@@ -607,6 +768,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         selectKeywordForInfo,
         insertKeywordFromInfo,
         viewKeywordDoc,
-        openSettings
+        openSettings,
+        changeFileType
     );
 }
