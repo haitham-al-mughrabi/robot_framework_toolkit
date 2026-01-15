@@ -56,16 +56,21 @@ export class SettingsPanel {
         SettingsPanel.currentPanel = new SettingsPanel(panel, extensionUri);
     }
 
-    private _saveSettings(settings: any) {
+    private async _saveSettings(settings: any) {
         const config = vscode.workspace.getConfiguration('robotFrameworkToolkit');
 
-        // Save import path type
-        if (settings.importPathType) {
-            config.update('importPathType', settings.importPathType, vscode.ConfigurationTarget.Global);
-        }
+        try {
+            // Save import path type
+            if (settings.importPathType) {
+                await config.update('importPathType', settings.importPathType, vscode.ConfigurationTarget.Global);
+            }
 
-        vscode.window.showInformationMessage('Settings saved successfully!');
-        this._sendCurrentSettings();
+            vscode.window.showInformationMessage('Settings saved successfully!');
+            this._sendCurrentSettings();
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Unknown error';
+            vscode.window.showErrorMessage(`Failed to save settings: ${msg}`);
+        }
     }
 
     private _sendCurrentSettings() {

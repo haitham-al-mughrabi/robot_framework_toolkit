@@ -2,7 +2,7 @@
   "name": "robot-framework-toolkit",
   "displayName": "Robot Framework Toolkit",
   "description": "Create and manage Robot Framework test, resource, variables, and locators files with smart import management",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "publisher": "Haitham-Al-Mughrabi",
   "engines": {
     "vscode": "^1.74.0"
@@ -297,23 +297,23 @@
           "when": "resourceExtname == .robot || resourceExtname == .resource"
         }
       ]
-    }
-  },
-  "configuration": {
-    "title": "Robot Framework Toolkit",
-    "properties": {
-      "robotFrameworkToolkit.importPathType": {
-        "type": "string",
-        "enum": [
-          "relative",
-          "absolute"
-        ],
-        "default": "relative",
-        "description": "Default path type for imports: 'relative' for paths relative to file location, 'absolute' for workspace root paths",
-        "enumDescriptions": [
-          "Relative paths (e.g., ../folder/file.py)",
-          "Workspace root paths (e.g., folder/file.py)"
-        ]
+    },
+    "configuration": {
+      "title": "Robot Framework Toolkit",
+      "properties": {
+        "robotFrameworkToolkit.importPathType": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative",
+          "description": "Default path type for imports: 'relative' for paths relative to file location, 'absolute' for workspace root paths",
+          "enumDescriptions": [
+            "Relative paths (e.g., ../folder/file.py)",
+            "Workspace root paths (e.g., folder/file.py)"
+          ]
+        }
       }
     }
   },
